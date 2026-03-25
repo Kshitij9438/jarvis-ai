@@ -166,5 +166,3 @@ Sometimes it might:
 ## 👤 Author
 
 **Kshitij Shekhar**
-That’s what makes it look 🔥 elite on GitHub.
-```
