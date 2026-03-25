@@ -1,0 +1,18 @@
+[project]
+name = "jarvis-ai"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "numpy>=2.4.3",
+    "ollama>=0.6.1",
+    "pydantic>=2.12.5",
+    "pypdf>=6.9.2",
+    "pytest>=9.0.2",
+    "python-dotenv>=1.2.2",
+    "rich>=14.3.3",
+    "sentence-transformers>=5.3.0",
+]
+[tool.setuptools.packages.find]
+where = ["."]
