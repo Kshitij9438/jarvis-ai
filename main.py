@@ -3,46 +3,41 @@ from executor.executor import Executor
 from tools.registry import ToolRegistry
 from tools.basic_tools import OpenWebsiteTool, EchoTool
 from tools.rag_tool import RAGTool
-from tools.load_doc_tool import LoadDocTool  # 🔥 NEW
+from tools.load_doc_tool import LoadDocTool
 
-# 🔥 RAG imports
 from rag.qa import RAGQA
 from rag.embedder import Embedder
 from rag.store import VectorStore
 from rag.retriever import Retriever
-from rag.ingestor import Ingestor  # 🔥 NEW
+from rag.ingestor import Ingestor
+
+
+def is_good_result(results):
+    for r in results:
+        if "⚠️" in str(r):
+            return False
+    return True
 
 
 if __name__ == "__main__":
-    # =========================
-    # 🧠 RAG SYSTEM SETUP
-    # =========================
     embedder = Embedder()
     store = VectorStore()
 
-    # 🔥 NEW: ingestion system
     ingestor = Ingestor(embedder, store)
-
     retriever = Retriever(embedder, store)
     rag = RAGQA(retriever)
 
-    # =========================
-    # 🧱 TOOL SYSTEM SETUP
-    # =========================
     registry = ToolRegistry()
     registry.register(OpenWebsiteTool())
     registry.register(EchoTool())
-    registry.register(RAGTool(rag))             # 🔥 RAG tool
-    registry.register(LoadDocTool(ingestor))    # 🔥 NEW ingestion tool
+    registry.register(RAGTool(rag))
+    registry.register(LoadDocTool(ingestor))
 
     planner = Planner(registry)
     executor = Executor(registry)
 
     print("JARVIS started. Type 'exit' to quit.")
 
-    # =========================
-    # 🔁 MAIN LOOP
-    # =========================
     while True:
         user_input = input("You: ").strip()
 
@@ -50,15 +45,51 @@ if __name__ == "__main__":
             print("JARVIS: Goodbye 👋")
             break
 
-        plan = planner.plan(user_input)
+        max_attempts = 2
+        attempt = 0
+        final_results = None
 
-        if plan is None:
-            print("⚠️ Failed to generate plan.")
-            continue
+        while attempt < max_attempts:
+            print(f"\n🔁 Attempt {attempt+1}")
 
-        print("PLAN:", plan)
+            plan = planner.plan(user_input)
 
-        results = executor.execute(plan)
+            if plan is None:
+                print("⚠️ Failed to generate plan.")
+                break
 
-        for result in results:
-            print("RESULT:", result)
+            # 🔥 REMOVE NOISY ECHO STEPS
+            plan.steps = [
+                step for step in plan.steps
+                if not (step.action == "echo" and "open" in str(step.args).lower())
+            ]
+
+            print("PLAN:", plan)
+
+            results = executor.execute(plan)
+
+            for result in results:
+                print("RESULT:", result)
+
+            reflection = planner.llm.generate_reflection(
+                goal=user_input,
+                plan=plan,
+                results=results
+            )
+
+            if reflection is None:
+                final_results = results
+                break
+
+            print("🧠 Reflection:", reflection)
+
+            # 🔥 SMART ACCEPTANCE
+            if reflection.status.lower() == "success" or is_good_result(results):
+                final_results = results
+                break
+
+            print("⚠️ Retrying...\n")
+            attempt += 1
+
+        if final_results is None:
+            print("❌ Could not complete task successfully.")

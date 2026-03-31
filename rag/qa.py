@@ -7,12 +7,16 @@ class RAGQA:
         self.llm = LLM()
 
     def answer(self, query: str):
-        # 🔍 Retrieve context
         chunks = self.retriever.retrieve(query)
+
+        # 🔥 FALLBACK TO GENERAL KNOWLEDGE
+        if not chunks:
+            return self.llm.generate_text(
+                f"Answer this from general knowledge:\n{query}"
+            )
 
         context = "\n".join(chunks)
 
-        # 🧠 Build prompt
         prompt = f"""
 Use the following context to answer the question.
 
@@ -22,7 +26,7 @@ Context:
 Question:
 {query}
 
-Answer concisely.
+Answer concisely and only using the provided context.
 """
 
-        return self.llm.generate(prompt)
+        return self.llm.generate_text(prompt)
