@@ -1,82 +1,104 @@
-from planner.planner import Planner
-from planner.schema import Plan
+def test_dedup_and_normalization():
+    from planner.planner import Planner
 
-
-# =========================
-# 🧪 TEST: PLANNER RETRY (NEW LLM API)
-# =========================
-def test_planner_retry(monkeypatch):
     class FakeRegistry:
         def list_tools(self):
             return []
 
     planner = Planner(FakeRegistry())
 
-    calls = {"count": 0}
+    plan = planner.plan("open github and open github and explain git and explain git again")
 
-    def fake_generate_plan(user_input, schema, tool_info):
-        calls["count"] += 1
+    assert len(plan.steps) == 2
 
-        if calls["count"] == 1:
-            return None  # ❌ first attempt fails
-        else:
-            return Plan(steps=[])  # ✅ second attempt succeeds
+    actions = [step.action for step in plan.steps]
+    assert "open_website" in actions
+    assert "explain" in actions
 
-    # 🔥 Patch new method
-    monkeypatch.setattr(planner.llm, "generate_plan", fake_generate_plan)
+def test_entity_extraction_multiple():
+    from planner.planner import Planner
 
-    plan = planner.plan("test")
-
-    assert plan is not None
-    assert isinstance(plan, Plan)
-    assert calls["count"] == 2
-
-
-# =========================
-# 🧪 TEST: CONTROL LAYER PATH
-# =========================
-def test_control_layer_trigger(monkeypatch):
     class FakeRegistry:
         def list_tools(self):
             return []
 
     planner = Planner(FakeRegistry())
 
-    # 🔥 Force intent to hit control layer
-    monkeypatch.setattr(
-        "planner.intent.classify_intent",
-        lambda llm, user_input: ["open_website"]
+    plan = planner.plan("open github and open youtube")
+
+    urls = [step.args["url"] for step in plan.steps if step.action == "open_website"]
+
+    assert "https://github.com" in urls
+    assert "https://youtube.com" in urls
+
+def test_validator_no_fake_load():
+    from planner.planner import Planner
+
+    class FakeRegistry:
+        def list_tools(self):
+            return []
+
+    planner = Planner(FakeRegistry())
+
+    plan = planner.plan("summarize this")
+
+    actions = [step.action for step in plan.steps]
+
+    # ❌ should NOT inject load_document(None)
+    assert "load_document" not in actions
+
+def test_invalid_website_filtered():
+    from planner.planner import Planner
+
+    class FakeRegistry:
+        def list_tools(self):
+            return []
+
+    planner = Planner(FakeRegistry())
+
+    plan = planner.plan("open website with no url")
+
+    # ✅ Case 1: empty plan (ideal)
+    if len(plan.steps) == 0:
+        assert True
+        return
+
+    # ✅ Case 2: if steps exist, they must be valid open_website actions
+    for step in plan.steps:
+        if step.action == "open_website":
+            assert "url" in step.args
+            assert step.args["url"].startswith("http")
+
+def test_empty_explain():
+    from planner.planner import Planner
+
+    class FakeRegistry:
+        def list_tools(self):
+            return []
+
+    planner = Planner(FakeRegistry())
+
+    plan = planner.plan("explain")
+
+    # should not produce meaningless explain
+    assert len(plan.steps) == 0 or plan.steps[0].args["query"] != "explain"
+
+def test_full_pipeline_complex():
+    from planner.planner import Planner
+
+    class FakeRegistry:
+        def list_tools(self):
+            return []
+
+    planner = Planner(FakeRegistry())
+
+    plan = planner.plan(
+        "open github and github, then explain git and explain git again, and also open youtube"
     )
 
-    plan = planner.plan("open youtube")
+    actions = [step.action for step in plan.steps]
 
-    assert plan is not None
-    assert len(plan.steps) > 0
-    assert plan.steps[0].action == "open_website"
+    assert "open_website" in actions
+    assert "explain" in actions
+    assert len(plan.steps) == 3  # github + youtube + explain
 
-
-# =========================
-# 🧪 TEST: LLM FALLBACK PATH
-# =========================
-def test_llm_fallback(monkeypatch):
-    class FakeRegistry:
-        def list_tools(self):
-            return []
-
-    planner = Planner(FakeRegistry())
-
-    # 🔥 Force no control-layer trigger
-    monkeypatch.setattr(
-        "planner.intent.classify_intent",
-        lambda llm, user_input: ["general"]
-    )
-
-    def fake_generate_plan(user_input, schema, tool_info):
-        return Plan(steps=[{"action": "echo", "args": {"text": "hi"}}])
-
-    monkeypatch.setattr(planner.llm, "generate_plan", fake_generate_plan)
-
-    plan = planner.plan("random input")
-
-    assert plan is not None
-    assert plan.steps[0].action == "echo"

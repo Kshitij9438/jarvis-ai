@@ -1,55 +1,159 @@
-from brain.llm import LLM
-from planner.schema import Plan
+from planner.schema import Plan, Action
 
-# 🔥 New modular imports
+# 🔥 Core deterministic pipeline
 from planner.intent import classify_intent
-from planner.control import control_layer
-from planner.tool_prompt import build_tool_prompt
+from planner.task_builder import TaskBuilder
+from planner.dependency_resolver import DependencyResolver
+from planner.entity_extractor import EntityExtractor
+
+# 🔥 LLM enhancement layer
+from planner.llm_enhancer import LLMEnhancer
+from brain.llm import LLM
+from planner.optimizer import TaskOptimizer
+from planner.validator import PlanValidator
+from planner.intelligence import PlannerIntelligence
 
 
 class Planner:
     def __init__(self, registry):
-        self.llm = LLM()
         self.registry = registry
+        self.task_builder = TaskBuilder()
+        self.dependency_resolver = DependencyResolver()
+
+        # 🔥 Hybrid layer
+        self.llm = LLM()
+        self.enhancer = LLMEnhancer(self.llm)
+        self.entity_extractor = EntityExtractor()
+        self.optimizer = TaskOptimizer()
+        self.validator = PlanValidator()
+        self.intelligence = PlannerIntelligence()
 
     # =========================
-    # 🤖 MAIN PLANNER (ORCHESTRATOR)
+    # 🤖 MAIN PLANNER (V2.5 - HYBRID)
     # =========================
     def plan(self, user_input: str, max_retries: int = 2):
         # =========================
         # 🧠 Step 1: Intent Classification
         # =========================
         intents = classify_intent(self.llm, user_input)
+        print(f"DEBUG: Intents → {intents}")
+        # =========================
+        # 🧠 Step 2: Entity Extraction
+        # =========================
+
+        entities = self.entity_extractor.extract(user_input)
+        print(f"DEBUG: Entities → {entities}")
 
         # =========================
-        # ⚙️ Step 2: Control Layer (fast deterministic path)
+        # 🧱 Step 3: Task Building
         # =========================
-        controlled = control_layer(user_input, intents)
+        tasks = self.task_builder.build_tasks(user_input, intents, entities)
+        print(f"DEBUG: Raw Tasks → {tasks}")
+        tasks = self.optimizer.optimize(tasks)
+        print(f"DEBUG: Optimized Tasks → {tasks}")
 
-        if controlled is not None:
-            return controlled
+        if not tasks:
+             return Plan(steps=[
+                Action(
+            action="echo",
+            args={"text": "👍"})
+            ])
 
         # =========================
-        # 🧱 Step 3: Tool Context
+        # 🔗 Step 3: Dependency Resolution
         # =========================
-        tool_info = build_tool_prompt(self.registry)
+        ordered_tasks = self.dependency_resolver.resolve(tasks)
+        print(f"DEBUG: Ordered Tasks → {ordered_tasks}")
 
         # =========================
-        # 🤖 Step 4: LLM Planning (fallback)
+        # ⚙️ Step 4: Task → Actions
         # =========================
-        for attempt in range(max_retries):
-            print(f"DEBUG: Planning attempt {attempt+1}")
+        steps = []
 
-            plan = self.llm.generate_plan(
-                user_input=user_input,
-                schema=Plan,
-                tool_info=tool_info
-            )
+        for task in ordered_tasks:
+            if task.type == "open_website":
+                steps.append(Action(
+                    action="open_website",
+                    args={"url": self._normalize_url(task.target)}
+                ))
 
-            if plan is not None:
-                return plan
+            elif task.type == "load_document":
+                steps.append(Action(
+                    action="load_document",
+                    args={"file_path": task.file_path}
+                ))
 
-            print("⚠️ Plan generation failed, retrying...")
+            elif task.type == "summarize":
+                steps.append(Action(
+                    action="rag_search",
+                    args={"query": task.query}
+                ))
+            elif task.type == "explain":
+                steps.append(Action(action="explain",
+                args={"query": task.query}))
 
-        print("❌ Failed to generate plan after retries")
-        return None
+
+        print(f"DEBUG: Base Steps → {steps}")
+
+        # =========================
+        # 🤖 Step 5: LLM Enhancement (SAFE)
+        # =========================
+        #try:
+            #enhanced_steps = self.enhancer.enhance(user_input, steps)
+
+            # ✅ Safety check: fallback if bad output
+            #if enhanced_steps and len(enhanced_steps) >= len(steps):
+             #   print(f"DEBUG: Enhanced Steps → {enhanced_steps}")
+              #  steps = enhanced_steps
+            #else:
+             #   print("⚠️ Enhancement ignored (unsafe or empty)")
+
+        #except Exception as e:
+         #   print("⚠️ Enhancement failed:", e)
+
+        plan = Plan(steps=steps)
+        plan = self.validator.validate(plan)
+        print(f"DEBUG: Validated Plan → {plan}")
+        plan = self.intelligence.refine(plan)
+        print(f"DEBUG: Final Plan (after intelligence) → {plan}")
+        return plan
+
+    # =========================
+    # 🌐 URL NORMALIZATION
+    # =========================
+    def _normalize_url(self, site: str) -> str:
+        site = site.strip().lower()
+
+    # =========================
+    # 🔥 Known high-quality mappings
+    # =========================
+        sites = {
+        "youtube": "https://youtube.com",
+        "google": "https://www.google.com",
+        "coursera": "https://www.coursera.org",
+        "spotify": "https://www.spotify.com",
+        "github": "https://github.com",
+        "amazon": "https://www.amazon.com",
+        "netflix": "https://www.netflix.com",
+        "leetcode": "https://leetcode.com",
+    }
+
+        if site in sites:
+            return sites[site]
+
+    # =========================
+    # 🔥 If already full URL
+    # =========================
+        if site.startswith("http://") or site.startswith("https://"):
+            return site
+
+    # =========================
+    # 🔥 If looks like domain
+    # =========================
+        if "." in site:
+            return f"https://{site}"
+
+    # =========================
+    # 🔥 Default fallback
+    # =========================
+        return f"https://www.{site}.com"

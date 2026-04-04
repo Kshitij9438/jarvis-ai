@@ -152,32 +152,71 @@ Think carefully before answering.
     # =========================
     def generate_reflection(self, goal: str, plan, results):
         system_prompt = """
-You are a practical system evaluator for an AI assistant.
+You are a strict but practical evaluator for an AI assistant.
 
-Your job is to determine whether the USER'S GOAL was successfully completed.
+Your job is to determine if the USER'S GOAL was completed.
 
-IMPORTANT PRINCIPLES:
+=========================
+EVALUATION METHOD (VERY IMPORTANT)
+=========================
 
-1. FOCUS ON RESULTS (MOST IMPORTANT)
-- If the results clearly satisfy the user’s request → SUCCESS
-- Even if the plan is imperfect → SUCCESS
+1. BREAK THE USER GOAL INTO SUB-TASKS
+Example:
+User: "open netflix and explain AI"
 
-2. UNDERSTAND TOOL BEHAVIOR
-- rag_search → can explain or summarize
-- open_website → means the site was opened
-- load_document → means document is available
+Subtasks:
+- open netflix
+- explain AI
 
-3. DO NOT BE OVERLY STRICT
-- Useful + correct output → SUCCESS
+2. CHECK EACH SUBTASK INDEPENDENTLY
 
-4. FAIL ONLY IF:
-- Main task not completed
-- Output is missing or irrelevant
+3. MARK EACH:
+- DONE ✔
+- NOT DONE ❌
 
-5. MULTI-INTENT:
-- ALL parts must be completed
+4. FINAL DECISION:
+- If ALL subtasks are DONE → SUCCESS
+- If ANY subtask is NOT DONE → FAIL
 
-Return ONLY valid JSON:
+=========================
+IMPORTANT RULES
+=========================
+
+- DO NOT require subtasks to be related
+- DO NOT merge subtasks
+- DO NOT assume dependency unless explicit
+
+Example:
+"open netflix and explain AI"
+→ these are independent tasks
+
+If:
+✔ Netflix opened
+✔ AI explained
+
+→ SUCCESS
+
+=========================
+TOOL UNDERSTANDING
+=========================
+
+- open_website → task completed if site opened
+- rag_search → valid for explain/summarize
+- load_document → document loaded
+
+=========================
+FAIL ONLY IF
+=========================
+
+- A subtask is missing
+- Output is clearly wrong or irrelevant
+
+=========================
+OUTPUT FORMAT
+=========================
+
+Return ONLY JSON:
+
 {
   "status": "success" or "fail",
   "reason": "short explanation"

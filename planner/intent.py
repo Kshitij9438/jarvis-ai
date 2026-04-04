@@ -12,22 +12,54 @@ def classify_intent(llm: LLM, user_input: str) -> list:
     intents = set()
 
     # =========================
-    # ⚡ RULE-BASED EXTRACTION (ACCUMULATIVE)
+    # 🧠 PHRASE + SYNONYM MAP
     # =========================
-    if "open" in text:
-        intents.add("open_website")
+    INTENT_KEYWORDS = {
+        "open_website": [
+            "open", "go to", "visit", "launch", "browse"
+        ],
+        "load_document": [
+            "load", "open file", "read file"
+        ],
+        "summarize": [
+            "summarize", "summary", "brief"
+        ],
+        "explain": [
+            "explain", "teach", "learn", "study",
+            "understand", "guide", "how to"
+        ],
+    }
 
-    if ".pdf" in text or ".txt" in text or ".md" in text or "load" in text:
+    # =========================
+    # ⚡ RULE-BASED MATCHING
+    # =========================
+    for intent, keywords in INTENT_KEYWORDS.items():
+        for keyword in keywords:
+            if keyword in text:
+                intents.add(intent)
+                break
+
+    # =========================
+    # 📄 FILE DETECTION BOOST
+    # =========================
+    if any(ext in text for ext in [".pdf", ".txt", ".md"]):
         intents.add("load_document")
 
-    if "summarize" in text:
-        intents.add("summarize")
+    # =========================
+    # 🎯 CONTEXTUAL RULES (IMPORTANT)
+    # =========================
 
-    if "explain" in text:
+    # 👉 "learn X from youtube"
+    if "youtube" in text and any(k in text for k in ["learn", "study", "teach"]):
+        intents.add("open_website")
+        intents.add("explain")
+
+    # 👉 "how to X"
+    if "how to" in text:
         intents.add("explain")
 
     # =========================
-    # 🤖 LLM AUGMENTATION (ONLY IF NEEDED)
+    # 🤖 LLM FALLBACK (RARE)
     # =========================
     if len(intents) == 0:
         prompt = f"""
