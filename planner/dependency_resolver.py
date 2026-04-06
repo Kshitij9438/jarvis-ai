@@ -6,14 +6,11 @@ class DependencyResolver:
         # 🔥 Dependency rules (EXTENSIBLE)
         self.dependencies = {
             "summarize": ["load_document"],
-            # future:
-            # "analyze": ["load_document"],
-            # "send_email": ["compose_email"]
         }
 
     def resolve(self, tasks: list[Task]) -> list[Task]:
         """
-        Resolves task order using dependency rules.
+        Resolves task order using context-aware dependency rules.
         """
 
         if not tasks:
@@ -22,12 +19,10 @@ class DependencyResolver:
         ordered = []
         visited = set()
 
-        # 🔥 Map tasks by type (first occurrence)
+        # 🔥 Map tasks by type
         task_map = {}
         for task in tasks:
-            if task.type not in task_map:
-                task_map[task.type] = []
-            task_map[task.type].append(task)
+            task_map.setdefault(task.type, []).append(task)
 
         # 🔥 Resolve each task
         for task in tasks:
@@ -44,17 +39,38 @@ class DependencyResolver:
         if key in visited:
             return
 
-        # 1. Resolve dependencies first
+        # 🔥 1. Resolve dependencies (CONTEXT-AWARE)
         deps = self.dependencies.get(task.type, [])
 
         for dep in deps:
-            if dep in task_map:
-                for dep_task in task_map[dep]:
-                    self._resolve_task(dep_task, task_map, ordered, visited)
+            if self._should_apply_dependency(task, dep):
+                if dep in task_map:
+                    for dep_task in task_map[dep]:
+                        self._resolve_task(dep_task, task_map, ordered, visited)
+                else:
+                    # ⚠️ Missing dependency → handled gracefully
+                    pass
 
-        # 2. Add current task
+        # 🔥 2. Add current task
         ordered.append(task)
         visited.add(key)
+
+    # =========================
+    # 🧠 CONTEXT-AWARE CHECK
+    # =========================
+    def _should_apply_dependency(self, task: Task, dep: str) -> bool:
+        """
+        Decide whether dependency should apply.
+        """
+
+        # 🔥 Case: summarize
+        if task.type == "summarize":
+            # Only require load_document if file_path exists
+            if task.file_path:
+                return True
+            return False
+
+        return True
 
     # =========================
     # 🧠 UNIQUE TASK ID

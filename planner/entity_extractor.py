@@ -35,14 +35,18 @@ class EntityExtractor:
         }
 
         # =========================
-        # 📄 FILE PATH
+        # 📄 FILE PATH (FIXED - PRECISE)
         # =========================
         match = re.search(
-            r'["\']?([A-Za-z]:\\[^"\']+\.(pdf|txt|md))["\']?',
-            user_input
-        )
+    r'([A-Za-z0-9_\-\\/:]+?\.(pdf|txt|md))',
+    user_input)
+
         if match:
-            entities["file_path"] = match.group(1).strip()
+            path = match.group(1).strip()
+            # 🔥 clean accidental prefixes like "summarize "
+            path = re.sub(r'^(summarize|open|load)\s+', '', path, flags=re.IGNORECASE)
+
+            entities["file_path"] = path.lower()
 
         # =========================
         # 🧠 SEGMENTATION
@@ -57,7 +61,7 @@ class EntityExtractor:
             words = segment.split()
 
             # =========================
-            # 🌐 WEBSITE EXTRACTION
+            # 🌐 WEBSITE EXTRACTION (FIXED)
             # =========================
             for word in words:
                 word = word.strip()
@@ -65,10 +69,16 @@ class EntityExtractor:
                 if not word or word in self.STOPWORDS:
                     continue
 
+                # ❌ skip file-like things
+                if re.search(r"\.(pdf|txt|md)$", word):
+                    continue
+
+                # ✅ known sites
                 if word in self.KNOWN_SITES:
                     entities["websites"].append(word)
                     continue
 
+                # ✅ domain-like (but not file)
                 if "." in word:
                     entities["websites"].append(word)
                     continue
@@ -86,7 +96,7 @@ class EntityExtractor:
                         entities["topics"].append(topic)
                         continue
 
-            # 👉 Case 2: learn/teach pattern (FIXED)
+            # 👉 Case 2: learn/teach pattern
             if any(w in segment for w in self.LEARN_WORDS):
                 topic_words = []
 
@@ -108,12 +118,27 @@ class EntityExtractor:
                     if word in self.FILLER_WORDS:
                         continue
 
+                    # ❌ skip file-like
+                    if re.search(r"\.(pdf|txt|md)$", word):
+                        continue
+
                     topic_words.append(word)
 
                 topic = " ".join(topic_words)
 
                 if topic:
                     entities["topics"].append(topic)
+
+        # =========================
+        # 🧠 CLEANUP (CRITICAL FIX)
+        # =========================
+
+        # ❌ remove file_path from websites if mistakenly added
+        if entities["file_path"]:
+            entities["websites"] = [
+                w for w in entities["websites"]
+                if entities["file_path"] not in w
+            ]
 
         # =========================
         # 🧠 FALLBACK TOPIC
@@ -123,10 +148,21 @@ class EntityExtractor:
 
             filtered = [
                 w for w in words
-                if w not in self.STOPWORDS and w not in self.KNOWN_SITES
+                if w not in self.STOPWORDS
+                and w not in self.KNOWN_SITES
+                and not re.search(r"\.(pdf|txt|md)$", w)
             ]
 
             if filtered:
                 entities["topics"].append(" ".join(filtered))
+        # =========================
+        # 🧠 REMOVE INVALID TOPICS
+        # =========================
+        INVALID_TOPICS = {"explain", "summarize", "open", "load"}
+
+        entities["topics"] = [
+    t for t in entities["topics"]
+    if t.strip() not in INVALID_TOPICS
+]
 
         return entities
