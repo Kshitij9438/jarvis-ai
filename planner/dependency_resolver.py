@@ -2,15 +2,12 @@ from planner.task import Task
 
 
 class DependencyResolver:
-    def __init__(self):
-        # 🔥 Dependency rules (EXTENSIBLE)
-        self.dependencies = {
-            "summarize": ["load_document"],
-        }
+    def __init__(self, registry):
+        self.registry = registry  # 🧠 NEW — tool-aware
 
     def resolve(self, tasks: list[Task]) -> list[Task]:
         """
-        Resolves task order using context-aware dependency rules.
+        Resolves task order using tool-defined dependencies.
         """
 
         if not tasks:
@@ -19,12 +16,12 @@ class DependencyResolver:
         ordered = []
         visited = set()
 
-        # 🔥 Map tasks by type
+        # map tasks by type
         task_map = {}
         for task in tasks:
             task_map.setdefault(task.type, []).append(task)
 
-        # 🔥 Resolve each task
+        # resolve each task
         for task in tasks:
             self._resolve_task(task, task_map, ordered, visited)
 
@@ -39,8 +36,9 @@ class DependencyResolver:
         if key in visited:
             return
 
-        # 🔥 1. Resolve dependencies (CONTEXT-AWARE)
-        deps = self.dependencies.get(task.type, [])
+        # 🧠 get dependencies from tool definition
+        tool = self.registry.get(task.type)
+        deps = tool.requires if tool else []
 
         for dep in deps:
             if self._should_apply_dependency(task, dep):
@@ -48,10 +46,10 @@ class DependencyResolver:
                     for dep_task in task_map[dep]:
                         self._resolve_task(dep_task, task_map, ordered, visited)
                 else:
-                    # ⚠️ Missing dependency → handled gracefully
+                    # ⚠️ missing dependency → skip (non-blocking)
                     pass
 
-        # 🔥 2. Add current task
+        # add current task
         ordered.append(task)
         visited.add(key)
 
@@ -61,14 +59,12 @@ class DependencyResolver:
     def _should_apply_dependency(self, task: Task, dep: str) -> bool:
         """
         Decide whether dependency should apply.
+        Keep minimal logic — avoid tool-specific hardcoding.
         """
 
-        # 🔥 Case: summarize
-        if task.type == "summarize":
-            # Only require load_document if file_path exists
-            if task.file_path:
-                return True
-            return False
+        # example: only enforce dependency if file_path exists
+        if task.file_path:
+            return True
 
         return True
 

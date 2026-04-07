@@ -2,18 +2,36 @@ from brain.llm import LLM
 
 
 class RAGQA:
-    def __init__(self, retriever):
+    def __init__(self, retriever, ingestor):
         self.retriever = retriever
+        self.ingestor = ingestor
         self.llm = LLM()
 
+    # =========================
+    # 📄 LOAD FILE
+    # =========================
+    def load_file(self, file_path: str):
+        return self.ingestor.load_file(file_path)
+
+    # =========================
+    # 🧠 CHECK IF DOCUMENT EXISTS
+    # =========================
+    def has_documents(self):
+        return len(self.retriever.store.vectors) > 0
+
+    # =========================
+    # 🤖 ANSWER QUERY
+    # =========================
     def answer(self, query: str):
+        # 🚨 SAFETY CHECK
+        if not self.has_documents():
+            return "⚠️ No document loaded. Please load a file first."
+
         chunks = self.retriever.retrieve(query)
 
-        # 🔥 FALLBACK TO GENERAL KNOWLEDGE
+        # 🚨 NO RETRIEVAL RESULT
         if not chunks:
-            return self.llm.generate_text(
-                f"Answer this from general knowledge:\n{query}"
-            )
+            return "⚠️ No relevant information found in the document."
 
         context = "\n".join(chunks)
 
@@ -26,7 +44,7 @@ Context:
 Question:
 {query}
 
-Answer concisely and only using the provided context.
+Answer concisely and ONLY using the provided context.
 """
 
         return self.llm.generate_text(prompt)

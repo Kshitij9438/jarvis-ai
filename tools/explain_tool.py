@@ -12,7 +12,31 @@ class ExplainArgs(BaseModel):
 
 class ExplainTool(BaseTool):
     name = "explain"
-    description = "Explain general concepts using LLM"
+    description = "Explain concepts, teach topics, and answer conceptual questions using LLM"
+
+    # 🧠 CRITICAL — matching signals
+    intents = [
+        "explain",
+        "teach",
+        "learn",
+        "understand",
+        "what is",
+        "how does",
+        "guide",
+        "help me understand"
+    ]
+
+    entities = [
+        "topic",
+        "concept",
+        "idea",
+        "query",
+        "subject"
+    ]
+
+    # ⚡ moderate priority (after open/load)
+    priority = 3
+
     args_schema = ExplainArgs  # 🔥 REQUIRED
 
     def __init__(self):

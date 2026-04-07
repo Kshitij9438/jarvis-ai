@@ -6,9 +6,6 @@ class EntityExtractor:
     def __init__(self):
         self.llm = LLM()
 
-        # 🔥 Config
-        self.OPEN_KEYWORDS = ["open", "launch", "go to", "visit", "browse"]
-
         self.STOPWORDS = {
             "and", "then", "also", "with", "no", "url",
             "the", "a", "an", "please", "me", "for"
@@ -20,7 +17,7 @@ class EntityExtractor:
         }
 
         self.LEARN_WORDS = {
-            "learn", "teach", "study", "understand", "how"
+            "learn", "teach", "study", "understand", "how", "explain"
         }
 
         self.FILLER_WORDS = {"from", "on", "using"}
@@ -35,23 +32,27 @@ class EntityExtractor:
         }
 
         # =========================
-        # 📄 FILE PATH (FIXED - PRECISE)
+        # 📄 FILE PATH (ROBUST FIX)
         # =========================
         match = re.search(
-    r'([A-Za-z0-9_\-\\/:]+?\.(pdf|txt|md))',
-    user_input)
+            r'([A-Za-z]:\\[^"]+?\.(pdf|txt|md))', user_input
+        )
+
+        if not match:
+            match = re.search(
+                r'([A-Za-z0-9_\-\\/]+?\.(pdf|txt|md))', user_input
+            )
 
         if match:
             path = match.group(1).strip()
-            # 🔥 clean accidental prefixes like "summarize "
-            path = re.sub(r'^(summarize|open|load)\s+', '', path, flags=re.IGNORECASE)
 
-            entities["file_path"] = path.lower()
+            # 🔥 DO NOT LOWERCASE PATH
+            entities["file_path"] = path
 
         # =========================
-        # 🧠 SEGMENTATION
+        # 🧠 SEGMENTATION (ALIGNED WITH PLANNER)
         # =========================
-        segments = re.split(r",| and | then ", text)
+        segments = re.split(r"\band\b|\bthen\b|,", text)
 
         for segment in segments:
             segment = segment.strip()
@@ -61,7 +62,7 @@ class EntityExtractor:
             words = segment.split()
 
             # =========================
-            # 🌐 WEBSITE EXTRACTION (FIXED)
+            # 🌐 WEBSITE EXTRACTION
             # =========================
             for word in words:
                 word = word.strip()
@@ -69,16 +70,13 @@ class EntityExtractor:
                 if not word or word in self.STOPWORDS:
                     continue
 
-                # ❌ skip file-like things
                 if re.search(r"\.(pdf|txt|md)$", word):
                     continue
 
-                # ✅ known sites
                 if word in self.KNOWN_SITES:
                     entities["websites"].append(word)
                     continue
 
-                # ✅ domain-like (but not file)
                 if "." in word:
                     entities["websites"].append(word)
                     continue
@@ -87,7 +85,7 @@ class EntityExtractor:
             # 🧠 TOPIC EXTRACTION
             # =========================
 
-            # 👉 Case 1: "explain X"
+            # explain pattern
             if "explain" in segment:
                 match = re.search(r"explain (.+)", segment)
                 if match:
@@ -96,7 +94,7 @@ class EntityExtractor:
                         entities["topics"].append(topic)
                         continue
 
-            # 👉 Case 2: learn/teach pattern
+            # learning pattern
             if any(w in segment for w in self.LEARN_WORDS):
                 topic_words = []
 
@@ -118,7 +116,6 @@ class EntityExtractor:
                     if word in self.FILLER_WORDS:
                         continue
 
-                    # ❌ skip file-like
                     if re.search(r"\.(pdf|txt|md)$", word):
                         continue
 
@@ -130,19 +127,24 @@ class EntityExtractor:
                     entities["topics"].append(topic)
 
         # =========================
-        # 🧠 CLEANUP (CRITICAL FIX)
+        # 🧠 CLEANUP
         # =========================
 
-        # ❌ remove file_path from websites if mistakenly added
+        # remove file path from websites
         if entities["file_path"]:
             entities["websites"] = [
                 w for w in entities["websites"]
                 if entities["file_path"] not in w
             ]
 
-        # =========================
-        # 🧠 FALLBACK TOPIC
-        # =========================
+        # remove file path from topics (🔥 important)
+        if entities["file_path"]:
+            entities["topics"] = [
+                t for t in entities["topics"]
+                if entities["file_path"].lower() not in t
+            ]
+
+        # fallback topic
         if not entities["topics"]:
             words = text.split()
 
@@ -155,14 +157,13 @@ class EntityExtractor:
 
             if filtered:
                 entities["topics"].append(" ".join(filtered))
-        # =========================
-        # 🧠 REMOVE INVALID TOPICS
-        # =========================
+
+        # remove invalid topics
         INVALID_TOPICS = {"explain", "summarize", "open", "load"}
 
         entities["topics"] = [
-    t for t in entities["topics"]
-    if t.strip() not in INVALID_TOPICS
-]
+            t for t in entities["topics"]
+            if t.strip() not in INVALID_TOPICS
+        ]
 
         return entities

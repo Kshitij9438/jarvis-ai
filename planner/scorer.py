@@ -2,23 +2,19 @@ from planner.schema import Plan
 
 
 class PlanScorer:
-    def __init__(self):
-        pass
+    def __init__(self, registry=None):
+        self.registry = registry  # 🧠 NEW — tool-aware
 
     # =========================
     # 🧠 MAIN ENTRY
     # =========================
     def score(self, plan: Plan, intents: list = None) -> dict:
-        """
-        Returns detailed score breakdown.
-        """
-
         return {
             "completeness": self._score_completeness(plan, intents),
             "minimality": self._score_minimality(plan),
             "validity": self._score_validity(plan),
             "coherence": self._score_coherence(plan),
-            "total": 0  # filled below
+            "total": 0
         } | self._finalize(plan, intents)
 
     # =========================
@@ -26,26 +22,14 @@ class PlanScorer:
     # =========================
     def _score_completeness(self, plan: Plan, intents: list) -> float:
         if not intents:
-            return 1.0  # cannot judge
+            return 1.0
 
-        actions = [s.action for s in plan.steps]
+        actions = {s.action for s in plan.steps}
 
-        coverage = 0
+        # 🧠 no more intent_map — direct matching
+        covered = sum(1 for intent in intents if intent in actions)
 
-        intent_map = {
-            "open_website": "open_website",
-            "explain": "explain",
-            "summarize": "rag_search",
-            "load_document": "load_document"
-        }
-
-        for intent in intents:
-            expected_action = intent_map.get(intent)
-
-            if expected_action in actions:
-                coverage += 1
-
-        return coverage / len(intents)
+        return covered / len(intents)
 
     # =========================
     # 🧹 MINIMALITY
@@ -68,49 +52,45 @@ class PlanScorer:
         return 1.0 - (duplicates / len(plan.steps))
 
     # =========================
-    # ⚙️ VALIDITY
+    # ⚙️ VALIDITY (TOOL-SCHEMA DRIVEN)
     # =========================
     def _score_validity(self, plan: Plan) -> float:
+        if not plan.steps:
+            return 1.0
+
         valid = 0
 
         for step in plan.steps:
-            if step.action == "open_website":
-                if step.args.get("url"):
-                    valid += 1
+            tool = self.registry.get(step.action) if self.registry else None
 
-            elif step.action in ["explain", "rag_search"]:
-                if step.args.get("query"):
+            # 🧠 validate using tool schema
+            if tool and tool.args_schema:
+                try:
+                    tool.args_schema(**step.args)
                     valid += 1
-
-            elif step.action == "load_document":
-                if step.args.get("file_path"):
-                    valid += 1
-
+                except Exception:
+                    pass
             else:
-                valid += 1  # unknown tools allowed
-
-        if not plan.steps:
-            return 1.0
+                # unknown tool → allow
+                valid += 1
 
         return valid / len(plan.steps)
 
     # =========================
-    # 🔄 COHERENCE
+    # 🔄 COHERENCE (LIGHTWEIGHT)
     # =========================
     def _score_coherence(self, plan: Plan) -> float:
         actions = [s.action for s in plan.steps]
 
-        # simple rule-based scoring
         score = 1.0
 
-        # explain before open? slight penalty
+        # simple ordering heuristics (tool-agnostic)
         if "explain" in actions and "open_website" in actions:
             if actions.index("explain") < actions.index("open_website"):
                 score -= 0.2
 
-        # summarize without load? penalty
+        # basic dependency awareness
         if "rag_search" in actions and "load_document" not in actions:
-        # Only penalize if query implies document usage
             for step in plan.steps:
                 if step.action == "rag_search":
                     query = step.args.get("query", "")

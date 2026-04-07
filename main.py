@@ -119,7 +119,7 @@ if __name__ == "__main__":
 
     ingestor = Ingestor(embedder, store)
     retriever = Retriever(embedder, store)
-    rag = RAGQA(retriever)
+    rag = RAGQA(retriever, ingestor)
 
     # =========================
     # 🔧 TOOL REGISTRY
@@ -128,7 +128,7 @@ if __name__ == "__main__":
     registry.register(OpenWebsiteTool())
     registry.register(EchoTool())
     registry.register(RAGTool(rag))
-    registry.register(LoadDocTool(ingestor))
+    registry.register(LoadDocTool(rag))
     registry.register(ExplainTool())
 
     # =========================

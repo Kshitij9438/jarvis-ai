@@ -1,149 +1,159 @@
 from planner.schema import Plan, Action
 
-# 🔥 Core deterministic pipeline
-from planner.intent import classify_intent
+# 🧠 TOOL-CENTRIC IMPORTS
 from planner.task_builder import TaskBuilder
 from planner.dependency_resolver import DependencyResolver
 from planner.entity_extractor import EntityExtractor
+from planner.arg_extractor import ArgExtractor
 
-# 🔥 LLM enhancement layer
-from planner.llm_enhancer import LLMEnhancer
+# 🔥 CORE SYSTEM
 from brain.llm import LLM
 from planner.optimizer import TaskOptimizer
 from planner.validator import PlanValidator
 from planner.intelligence import PlannerIntelligence
-
-# 🧠 NEW: Plan Scorer
 from planner.scorer import PlanScorer
-from planner.completeness import CompletenessChecker
 
 
 class Planner:
     def __init__(self, registry):
         self.registry = registry
-        self.task_builder = TaskBuilder()
-        self.dependency_resolver = DependencyResolver()
 
-        # 🔥 Hybrid layer
+        # 🧠 CORE COMPONENTS
         self.llm = LLM()
-        self.enhancer = LLMEnhancer(self.llm)
+        self.arg_extractor = ArgExtractor(self.llm)
+        self.task_builder = TaskBuilder(self.arg_extractor)
+        self.dependency_resolver = DependencyResolver(self.registry)
         self.entity_extractor = EntityExtractor()
+
+        # 🔥 EXISTING PIPELINE
         self.optimizer = TaskOptimizer()
         self.validator = PlanValidator()
         self.intelligence = PlannerIntelligence()
-
-        # 🧠 NEW
-        self.scorer = PlanScorer()
-        self.completeness = CompletenessChecker()
+        self.scorer = PlanScorer(registry=self.registry)
 
     # =========================
-    # 🤖 MAIN PLANNER (V2.6 - WITH SCORING)
+    # 🤖 MAIN PLANNER
     # =========================
-    def plan(self, user_input: str, max_retries: int = 2):
+    def plan(self, user_input: str):
 
         # =========================
-        # 🧠 Step 1: Intent Classification
+        # 🧠 Step 1: MULTI-INTENT SPLITTING
         # =========================
-        intents = classify_intent(self.llm, user_input)
-        print(f"DEBUG: Intents → {intents}")
+        segments = [s.strip() for s in user_input.split(" and ")]
 
-        # =========================
-        # 🧠 Step 2: Entity Extraction
-        # =========================
-        entities = self.entity_extractor.extract(user_input)
-        print(f"DEBUG: Entities → {entities}")
+        all_tools = []
 
-        # =========================
-        # 🧱 Step 3: Task Building
-        # =========================
-        tasks = self.task_builder.build_tasks(user_input, intents, entities)
-        print(f"DEBUG: Raw Tasks → {tasks}")
+        for segment in segments:
+            tools = self.registry.match_tools(segment)
+            print(f"DEBUG: Segment '{segment}' → {[t.name for t in tools]}")
+            all_tools.extend(tools)
 
-        tasks = self.optimizer.optimize(tasks)
-        print(f"DEBUG: Optimized Tasks → {tasks}")
+        # remove duplicates (preserve order)
+        seen = set()
+        matched_tools = []
 
-        # =========================
-        # ⚠️ Fallback (no tasks)
-        # =========================
-        if not tasks:
+        for tool in all_tools:
+            if tool.name not in seen:
+                matched_tools.append(tool)
+                seen.add(tool.name)
+
+        print(f"DEBUG: Final Matched Tools → {[t.name for t in matched_tools]}")
+
+        # ⚠️ fallback if nothing matched
+        if not matched_tools:
             return Plan(steps=[
-                Action(action="echo", args={"text": "👍"})
+                Action(action="echo", args={"text": "🤔 No matching tool found"})
             ])
 
         # =========================
-        # 🔗 Step 4: Dependency Resolution
+        # 🧱 Step 2: SEGMENT-AWARE TASK BUILDING (🔥 FIX)
+        # =========================
+        tasks = []
+
+        for segment in segments:
+            segment_tools = self.registry.match_tools(segment)
+
+            if not segment_tools:
+                continue
+
+            segment_entities = self.entity_extractor.extract(segment)
+
+            segment_tasks = self.task_builder.build_tasks(
+                segment,
+                segment_tools,
+                segment_entities
+            )
+
+            tasks.extend(segment_tasks)
+
+        print(f"DEBUG: Raw Tasks → {tasks}")
+
+        # =========================
+        # ⚙️ Step 3: OPTIMIZATION
+        # =========================
+        tasks = self.optimizer.optimize(tasks)
+        print(f"DEBUG: Optimized Tasks → {tasks}")
+
+        # ⚠️ fallback
+        if not tasks:
+            return Plan(steps=[
+                Action(action="echo", args={"text": "⚠️ Could not build tasks"})
+            ])
+
+        # =========================
+        # 🔗 Step 4: DEPENDENCY RESOLUTION
         # =========================
         ordered_tasks = self.dependency_resolver.resolve(tasks)
+
+        # ⚡ priority-based ordering
+        ordered_tasks.sort(
+            key=lambda t: self.registry.get(t.type).priority
+            if self.registry.get(t.type) else 5
+        )
+
         print(f"DEBUG: Ordered Tasks → {ordered_tasks}")
 
         # =========================
-        # ⚙️ Step 5: Task → Actions
+        # ⚙️ Step 5: TASK → ACTIONS
         # =========================
         steps = []
 
         for task in ordered_tasks:
-            if task.type == "open_website":
-                steps.append(Action(
-                    action="open_website",
-                    args={"url": self._normalize_url(task.target)}
-                ))
+            args = {}
 
-            elif task.type == "load_document":
-                steps.append(Action(
-                    action="load_document",
-                    args={"file_path": task.file_path}
-                ))
+            if task.target:
+                args["url"] = self._normalize_url(task.target)
 
-            elif task.type == "summarize":
-                steps.append(Action(
-                    action="rag_search",
-                    args={"query": task.query}
-                ))
+            if task.file_path:
+                args["file_path"] = task.file_path
 
-            elif task.type == "explain":
-                steps.append(Action(
-                    action="explain",
-                    args={"query": task.query}
-                ))
+            if task.query:
+                args["query"] = task.query
 
-        print(f"DEBUG: Base Steps → {steps}")
+            steps.append(Action(
+                action=task.type,
+                args=args
+            ))
+
+        print(f"DEBUG: Steps → {steps}")
 
         # =========================
-        # 🤖 Step 6: LLM Enhancement (SAFE)
-        # =========================
-        # try:
-        #     enhanced_steps = self.enhancer.enhance(user_input, steps)
-        #
-        #     # ✅ Safety check: fallback if bad output
-        #     if enhanced_steps and len(enhanced_steps) >= len(steps):
-        #         print(f"DEBUG: Enhanced Steps → {enhanced_steps}")
-        #         steps = enhanced_steps
-        #     else:
-        #         print("⚠️ Enhancement ignored (unsafe or empty)")
-        #
-        # except Exception as e:
-        #     print("⚠️ Enhancement failed:", e)
-
-        # =========================
-        # ✅ Step 7: Validation
+        # ✅ Step 6: VALIDATION
         # =========================
         plan = Plan(steps=steps)
         plan = self.validator.validate(plan)
         print(f"DEBUG: Validated Plan → {plan}")
-        # 🧠 NEW: completeness check
-        plan = self.completeness.ensure(plan, intents, entities)
-        print(f"DEBUG: After Completeness → {plan}")
 
         # =========================
-        # 🧠 Step 8: Intelligence Layer
+        # 🧠 Step 7: INTELLIGENCE
         # =========================
-        plan = self.intelligence.refine(plan,intents)
-        print(f"DEBUG: Final Plan (after intelligence) → {plan}")
+        plan = self.intelligence.refine(plan)
+        print(f"DEBUG: Final Plan → {plan}")
 
         # =========================
-        # 🧠 NEW: Step 9 → SCORING
+        # 🧠 Step 8: SCORING
         # =========================
-        score = self.scorer.score(plan, intents)
+        score = self.scorer.score(plan)
         print(f"DEBUG: Plan Score → {score}")
 
         return plan
@@ -154,7 +164,6 @@ class Planner:
     def _normalize_url(self, site: str) -> str:
         site = site.strip().lower()
 
-        # 🔥 Known high-quality mappings
         sites = {
             "youtube": "https://youtube.com",
             "google": "https://www.google.com",
@@ -169,13 +178,10 @@ class Planner:
         if site in sites:
             return sites[site]
 
-        # 🔥 If already full URL
         if site.startswith("http://") or site.startswith("https://"):
             return site
 
-        # 🔥 If looks like domain
         if "." in site:
             return f"https://{site}"
 
-        # 🔥 Default fallback
         return f"https://www.{site}.com"

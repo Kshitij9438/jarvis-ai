@@ -30,9 +30,30 @@ class TaskOptimizer:
     # 🧠 MAIN PIPELINE
     # =========================
     def optimize(self, tasks: list[Task]) -> list[Task]:
+        if not tasks:
+            return []
+
+        original_tasks = list(tasks)  # 🔥 keep original for recovery
+
         tasks = self._normalize(tasks)
         tasks = self._deduplicate(tasks)
         tasks = self._filter_invalid(tasks)
+
+        # =========================
+        # 🔥 DEPENDENCY PROTECTION (CRITICAL)
+        # =========================
+        task_types = {t.type for t in tasks}
+
+        if "rag_search" in task_types:
+            has_loader = any(t.type == "load_document" for t in tasks)
+
+            if not has_loader:
+                # 🔥 recover loader from ORIGINAL tasks
+                for t in original_tasks:
+                    if t.type == "load_document" and t.file_path:
+                        tasks.insert(0, t)
+                        break
+
         return tasks
 
     # =========================
@@ -55,7 +76,7 @@ class TaskOptimizer:
         return normalized
 
     # =========================
-    # 🧠 QUERY NORMALIZATION (UPGRADED)
+    # 🧠 QUERY NORMALIZATION
     # =========================
     def _normalize_query(self, query: str | None) -> str | None:
         if not query:
@@ -63,42 +84,39 @@ class TaskOptimizer:
 
         query = query.lower().strip()
 
-        # 🔥 1. Remove noise words
+        # 🔥 remove noise
         words = query.split()
         words = [w for w in words if w not in self.noise_words]
         query = " ".join(words)
 
-        # 🔥 2. Apply synonym compression
+        # 🔥 synonyms
         for phrase, replacement in self.synonyms.items():
             if phrase in query:
                 query = query.replace(phrase, replacement)
 
-        # 🔥 3. Learning intent normalization
+        # 🔥 learning normalization
         for pattern in self.learning_patterns:
             match = re.search(pattern, query)
             if match:
                 topic = match.group(1).strip()
 
-                # apply synonyms again on extracted topic
                 for phrase, replacement in self.synonyms.items():
                     if phrase in topic:
                         topic = topic.replace(phrase, replacement)
 
                 return f"{topic} basics"
 
-        # 🔥 4. Remove duplicate words (e.g., "git git")
+        # 🔥 remove duplicates
         words = query.split()
         seen = set()
-        cleaned_words = []
+        cleaned = []
 
         for w in words:
             if w not in seen:
                 seen.add(w)
-                cleaned_words.append(w)
+                cleaned.append(w)
 
-        query = " ".join(cleaned_words)
-
-        return query.strip()
+        return " ".join(cleaned).strip()
 
     # =========================
     # 🔁 DEDUPLICATION
@@ -123,7 +141,7 @@ class TaskOptimizer:
         elif task.type == "load_document":
             return (task.type, task.file_path)
 
-        elif task.type in ["summarize", "explain"]:
+        elif task.type in ["rag_search", "explain"]:  # ✅ FIXED
             return (task.type, task.query)
 
         return (task.type, task.target, task.file_path, task.query)
@@ -143,8 +161,7 @@ class TaskOptimizer:
                 if task.file_path:
                     valid.append(task)
 
-            elif task.type in ["summarize", "explain"]:
-                # ❌ reject meaningless queries
+            elif task.type in ["rag_search", "explain"]:  # ✅ FIXED
                 if task.query and len(task.query.strip()) > 2:
                     valid.append(task)
 

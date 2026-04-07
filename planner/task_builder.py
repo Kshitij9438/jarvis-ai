@@ -2,60 +2,31 @@ from planner.task import Task
 
 
 class TaskBuilder:
-    def __init__(self):
-        pass
+    def __init__(self, arg_extractor):
+        self.arg_extractor = arg_extractor
 
-    def build_tasks(self, user_input: str, intents: list, entities: dict) -> list[Task]:
+    def build_tasks(self, user_input: str, matched_tools: list, entities: dict) -> list[Task]:
         tasks = []
 
-        # =========================
-        # 🌐 OPEN WEBSITE TASKS (DYNAMIC)
-        # =========================
-        if "open_website" in intents:
-            for site in entities.get("websites", []):
-                tasks.append(Task(
-                    type="open_website",
-                    target=site
-                ))
+        for tool in matched_tools:
+            # 🧠 1. Extract structured args using LLM + schema
+            extracted = self.arg_extractor.extract(user_input, tool)
 
-        # =========================
-        # 📄 LOAD DOCUMENT TASK
-        # =========================
-        if "load_document" in intents:
-            file_path = entities.get("file_path")
+            # 🧱 2. Merge reliable regex entities (override if needed)
+            if "file_path" in entities:
+                extracted["file_path"] = entities["file_path"]
 
-            if file_path:
-                tasks.append(Task(
-                    type="load_document",
-                    file_path=file_path
-                ))
+            if "url" in entities:
+                extracted["url"] = entities["url"]
 
-        # =========================
-        # 📝 SUMMARIZE TASK
-        # =========================
-        if "summarize" in intents:
-            tasks.append(Task(
-                type="summarize",
-                query="summary of loaded document"
-            ))
+            # 🧠 3. Build generic task
+            task = Task(
+                type=tool.name,
+                target=extracted.get("url") or extracted.get("website"),
+                file_path=extracted.get("file_path"),
+                query=extracted.get("query") or user_input
+            )
 
-        # =========================
-        # 📚 EXPLAIN TASK (DYNAMIC)
-        # =========================
-        if "explain" in intents:
-            topics = entities.get("topics", [])
-
-            if topics:
-                for topic in topics:
-                    tasks.append(Task(
-                        type="explain",
-                        query=topic
-                    ))
-            else:
-                # fallback
-                tasks.append(Task(
-                    type="explain",
-                    query=user_input
-                ))
+            tasks.append(task)
 
         return tasks
