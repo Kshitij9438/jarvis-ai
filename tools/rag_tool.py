@@ -1,5 +1,6 @@
 from tools.base import BaseTool
 from pydantic import BaseModel
+import re
 
 
 class RAGArgs(BaseModel):
@@ -10,7 +11,6 @@ class RAGTool(BaseTool):
     name = "rag_search"
     description = "Search, summarize, and answer questions from loaded documents"
 
-    # 🧠 matching signals
     intents = [
         "summarize",
         "summary",
@@ -29,10 +29,7 @@ class RAGTool(BaseTool):
         "content"
     ]
 
-    # 🔗 dependency
     requires = ["load_document"]
-
-    # ⚡ execution priority
     priority = 2
 
     args_schema = RAGArgs
@@ -44,25 +41,51 @@ class RAGTool(BaseTool):
         query = kwargs.get("query", "")
 
         # =========================
-        # 🚨 SAFETY CHECK (CRITICAL)
+        # 🚨 SAFETY: document check
         # =========================
         if not hasattr(self.rag, "has_documents") or not self.rag.has_documents():
             return "⚠️ No document loaded. Please load a file before querying."
 
         # =========================
-        # 🧠 DEFAULT QUERY FIX
+        # 🧠 CLEAN QUERY (CRITICAL FIX)
         # =========================
-        if not query or len(query.strip()) < 3:
+        if query:
+            # remove file paths
+            query = re.sub(r"[A-Za-z]:\\\\[^\s]+", "", query)
+
+            # remove quotes
+            query = query.replace('"', "").replace("'", "")
+
+            query = query.strip()
+
+        # =========================
+        # 🧠 DEFAULT QUERY
+        # =========================
+        if not query or len(query) < 3:
+            query = "summarize the document"
+
+        # normalize summarize intent
+        if "summarize" in query.lower():
             query = "summarize the document"
 
         try:
             result = self.rag.answer(query)
 
             # =========================
-            # 🚨 EMPTY RESULT GUARD
+            # 🚨 BLOCK STRUCTURED / JSON LEAKS
             # =========================
-            if not result or len(result.strip()) < 5:
-                return "⚠️ Could not find relevant information in the document."
+            if isinstance(result, dict):
+                return "⚠️ Invalid RAG output. Try again."
+
+            if isinstance(result, str):
+                stripped = result.strip()
+
+                # block JSON-like output
+                if stripped.startswith("{") or stripped.startswith("["):
+                    return "⚠️ Invalid structured output from RAG."
+
+                if len(stripped) < 5:
+                    return "⚠️ Could not find relevant information in the document."
 
             return result
 

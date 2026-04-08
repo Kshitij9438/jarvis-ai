@@ -4,12 +4,10 @@ from tools.semantic_matcher import SemanticMatcher
 class ToolRegistry:
     def __init__(self):
         self.tools = {}
-        self.semantic = SemanticMatcher()  # 🔥 new
+        self.semantic = SemanticMatcher()
 
     def register(self, tool):
         self.tools[tool.name] = tool
-
-        # 🔥 register tool for semantic matching
         self.semantic.register_tool(tool)
 
     def get(self, name):
@@ -19,7 +17,7 @@ class ToolRegistry:
         return list(self.tools.values())
 
     # =========================
-    # 🧠 HYBRID MATCHING (KEYWORD + SEMANTIC)
+    # 🧠 HYBRID MATCHING (FINAL)
     # =========================
     def match_tools(self, user_input: str, top_k: int = 3):
         text = user_input.lower()
@@ -28,12 +26,12 @@ class ToolRegistry:
         for tool in self.tools.values():
             keyword_score = 0
 
-            # 🔥 intent matching (strong)
+            # 🔥 intent matching
             for intent in getattr(tool, "intents", []):
                 if intent in text:
                     keyword_score += 2
 
-            # 🔥 entity matching (weak)
+            # 🔥 entity matching
             for entity in getattr(tool, "entities", []):
                 if entity in text:
                     keyword_score += 1
@@ -44,14 +42,48 @@ class ToolRegistry:
             # 🔥 hybrid score
             final_score = keyword_score + (semantic_score * 2)
 
-            # ⚠️ minimal threshold
-            if final_score > 0.5:
+            # =========================
+            # 🔥 STRICT FILTERING
+            # =========================
+            if keyword_score > 0 or semantic_score > 0.45:
                 scored.append((final_score, tool))
 
-        # sort by score
+        # =========================
+        # 🔝 SORT
+        # =========================
         scored.sort(key=lambda x: x[0], reverse=True)
 
-        # DEBUG (optional but useful)
+        # =========================
+        # 🔥 RELATIVE SCORE FILTERING
+        # =========================
+        if scored:
+            best_score = scored[0][0]
+
+            scored = [
+                (score, tool)
+                for score, tool in scored
+                if score >= best_score * 0.6
+            ]
+
+        # =========================
+        # 🔥 FALLBACK (CRITICAL FIX)
+        # =========================
+        if not scored:
+            best_tool = None
+            best_score = -1
+
+            for tool in self.tools.values():
+                sim = self.semantic.similarity(user_input, tool)
+
+                if sim > best_score:
+                    best_score = sim
+                    best_tool = tool
+
+            if best_tool:
+                print(f"DEBUG: Fallback → {best_tool.name} ({round(best_score, 2)})")
+                return [best_tool]
+
+        # DEBUG
         print("DEBUG: Tool Scores →", [
             (t.name, round(s, 2)) for s, t in scored
         ])

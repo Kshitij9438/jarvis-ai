@@ -24,6 +24,11 @@ class ExplainTool(BaseTool):
         "how does",
         "guide",
         "help me understand"
+        "walk me through",
+        "break down",
+        "guide me through",
+        "give me an overview",
+        "help me understand"
     ]
 
     entities = [

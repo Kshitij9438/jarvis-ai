@@ -121,7 +121,7 @@ class Planner:
         for task in ordered_tasks:
             args = {}
 
-            if task.target:
+            if task.type == "open_website" and task.target:
                 args["url"] = self._normalize_url(task.target)
 
             if task.file_path:
