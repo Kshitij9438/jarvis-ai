@@ -40,7 +40,7 @@ class ExplainTool(BaseTool):
     ]
 
     # ⚡ moderate priority (after open/load)
-    priority = 3
+    priority = 1
 
     args_schema = ExplainArgs  # 🔥 REQUIRED
 

@@ -17,9 +17,9 @@ class ToolRegistry:
         return list(self.tools.values())
 
     # =========================
-    # 🧠 HYBRID MATCHING (FINAL)
+    # 🧠 HYBRID MATCHING (STRICT SELECTION)
     # =========================
-    def match_tools(self, user_input: str, top_k: int = 3):
+    def match_tools(self, user_input: str, top_k: int = 2):
         text = user_input.lower()
         scored = []
 
@@ -42,10 +42,8 @@ class ToolRegistry:
             # 🔥 hybrid score
             final_score = keyword_score + (semantic_score * 2)
 
-            # =========================
-            # 🔥 STRICT FILTERING
-            # =========================
-            if keyword_score > 0 or semantic_score > 0.45:
+            # minimal threshold
+            if final_score > 0.5:
                 scored.append((final_score, tool))
 
         # =========================
@@ -54,7 +52,7 @@ class ToolRegistry:
         scored.sort(key=lambda x: x[0], reverse=True)
 
         # =========================
-        # 🔥 RELATIVE SCORE FILTERING
+        # 🔥 STRICT RELATIVE FILTER
         # =========================
         if scored:
             best_score = scored[0][0]
@@ -62,13 +60,18 @@ class ToolRegistry:
             scored = [
                 (score, tool)
                 for score, tool in scored
-                if score >= best_score * 0.6
+                if score >= best_score * 0.8   # 🔥 stricter than before
             ]
 
         # =========================
-        # 🔥 FALLBACK (CRITICAL FIX)
+        # 🔥 HARD LIMIT (KEY FIX)
         # =========================
-        if not scored:
+        selected = scored[:top_k]
+
+        # =========================
+        # 🔥 FALLBACK (SAFETY NET)
+        # =========================
+        if not selected:
             best_tool = None
             best_score = -1
 
@@ -85,10 +88,10 @@ class ToolRegistry:
 
         # DEBUG
         print("DEBUG: Tool Scores →", [
-            (t.name, round(s, 2)) for s, t in scored
+            (t.name, round(s, 2)) for s, t in selected
         ])
 
-        return [tool for _, tool in scored[:top_k]]
+        return [tool for _, tool in selected]
 
     # =========================
     # 🧠 TOOL PROMPT BUILDER
