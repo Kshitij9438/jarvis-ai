@@ -11,7 +11,6 @@ from planner.validator import PlanValidator
 from planner.intelligence import PlannerIntelligence
 from planner.scorer import PlanScorer
 
-# 🔥 NEW
 from planner.tool_selector import ToolSelector
 
 
@@ -30,20 +29,44 @@ class Planner:
         self.intelligence = PlannerIntelligence()
         self.scorer = PlanScorer(registry=self.registry)
 
-        # 🔥 NEW
         self.tool_selector = ToolSelector(self.registry)
+
+    # =========================
+    # 🧠 CONDITIONAL RETRIEVER LOGIC (NEW)
+    # =========================
+    def _should_use_retriever(self, query: str) -> bool:
+        q = query.lower()
+
+        keywords = [
+            "what is", "who is", "explain", "latest",
+            "recent", "in ai", "in ml", "architecture",
+            "theory", "define"
+        ]
+
+        return any(k in q for k in keywords)
 
     def plan(self, user_input: str):
 
         # =========================
-        # 🧠 Step 0: SEGMENTATION (ONLY for tasks)
+        # 🧠 Step 0: SEGMENTATION
         # =========================
         segments = [s.strip() for s in user_input.split(" and ")]
 
         # =========================
-        # 🧠 Step 1: GLOBAL TOOL SELECTION (NEW CORE)
+        # 🧠 Step 1: TOOL SELECTION
         # =========================
         matched_tools = self.tool_selector.select(user_input, top_k=2)
+
+        tool_names = [t.name for t in matched_tools]
+
+        # =========================
+        # 🔥 CONDITIONAL RETRIEVER INJECTION (NEW)
+        # =========================
+        if "explain" in tool_names and self._should_use_retriever(user_input):
+            retriever = self.registry.get("web_retriever")
+
+            if retriever and "web_retriever" not in tool_names:
+                matched_tools.append(retriever)
 
         # =========================
         # 🔗 Step 1.5: DEPENDENCY EXPANSION
@@ -52,14 +75,14 @@ class Planner:
         added = set()
 
         for tool in matched_tools:
-            # add dependencies first
+            # dependencies first
             for dep_name in getattr(tool, "requires", []):
                 dep_tool = self.registry.get(dep_name)
                 if dep_tool and dep_tool.name not in added:
                     final_tools.append(dep_tool)
                     added.add(dep_tool.name)
 
-            # add main tool
+            # main tool
             if tool.name not in added:
                 final_tools.append(tool)
                 added.add(tool.name)
@@ -83,7 +106,7 @@ class Planner:
 
             segment_tasks = self.task_builder.build_tasks(
                 segment,
-                matched_tools,   # 🔥 IMPORTANT CHANGE
+                matched_tools,
                 segment_entities
             )
 
@@ -107,10 +130,19 @@ class Planner:
         # =========================
         ordered_tasks = self.dependency_resolver.resolve(tasks)
 
-        ordered_tasks.sort(
-            key=lambda t: self.registry.get(t.type).priority
-            if self.registry.get(t.type) else 5
-        )
+        # =========================
+        # 🔥 INTELLIGENT ORDERING FIX (CRITICAL)
+        # =========================
+        def _task_order_key(t):
+            if t.type == "web_retriever":
+                return 0
+            if t.type == "explain":
+                return 1
+
+            tool = self.registry.get(t.type)
+            return tool.priority if tool else 5
+
+        ordered_tasks.sort(key=_task_order_key)
 
         print(f"DEBUG: Ordered Tasks → {ordered_tasks}")
 

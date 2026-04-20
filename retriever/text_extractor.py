@@ -38,7 +38,7 @@ class TextExtractor:
             for p in soup.find_all("p")
         ]
 
-        paragraphs = [p for p in paragraphs if len(p) > 50]
+        paragraphs = [p for p in paragraphs if len(p.split()) > 8]
 
         extracted.extend(paragraphs[:20])
 

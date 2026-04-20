@@ -5,16 +5,18 @@ from brain.llm import LLM
 from pydantic import BaseModel
 
 
-# ✅ REQUIRED for executor
+# =========================
+# 📦 ARG SCHEMA (UPDATED)
+# =========================
 class ExplainArgs(BaseModel):
     query: str
+    context: str | None = None  # 🔥 NEW
 
 
 class ExplainTool(BaseTool):
     name = "explain"
-    description = "Explain concepts, teach topics, and answer conceptual questions using LLM"
+    description = "Explain concepts using LLM, optionally grounded with retrieved context"
 
-    # 🧠 CRITICAL — matching signals
     intents = [
         "explain",
         "teach",
@@ -23,12 +25,11 @@ class ExplainTool(BaseTool):
         "what is",
         "how does",
         "guide",
-        "help me understand"
+        "help me understand",
         "walk me through",
         "break down",
         "guide me through",
-        "give me an overview",
-        "help me understand"
+        "give me an overview"
     ]
 
     entities = [
@@ -39,14 +40,35 @@ class ExplainTool(BaseTool):
         "subject"
     ]
 
-    # ⚡ moderate priority (after open/load)
     priority = 1
-
-    args_schema = ExplainArgs  # 🔥 REQUIRED
+    args_schema = ExplainArgs
 
     def __init__(self):
         self.llm = LLM()
 
-    def run(self, query: str):
-        prompt = f"Explain clearly and concisely: {query}"
+    # =========================
+    # 🚀 RUN (CONTEXT-AWARE)
+    # =========================
+    def run(self, query: str, context: str = None):
+
+        # 🔥 CASE 1: WITH CONTEXT (RAG MODE)
+        if context:
+            prompt = f"""
+Use the following context to explain the concept.
+
+Question: {query}
+
+Context:
+{context}
+
+Give a clear, accurate, and concise explanation.
+"""
+        else:
+            # 🔁 FALLBACK
+            prompt = f"""
+Explain clearly and concisely:
+
+{query}
+"""
+
         return self.llm.generate_text(prompt)

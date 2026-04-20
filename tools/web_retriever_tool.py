@@ -4,8 +4,9 @@ from pydantic import BaseModel
 from retriever.web_fetcher import WebFetcher
 from retriever.text_extractor import TextExtractor
 
-from urllib.parse import quote
-from bs4 import BeautifulSoup
+from ddgs import DDGS
+import wikipedia
+from urllib.parse import urlparse
 
 
 class WebRetrieverArgs(BaseModel):
@@ -14,21 +15,17 @@ class WebRetrieverArgs(BaseModel):
 
 class WebRetrieverTool(BaseTool):
     name = "web_retriever"
-    description = "Retrieve and answer using web pages (Wikipedia-focused retrieval)"
+    description = "Retrieve relevant information from the internet using reliable sources"
 
-    intents = [
-        "learn",
-        "explain",
-        "understand",
-        "what is",
-        "who is",
-        "concept"
-    ]
-
+    intents = ["learn", "explain", "understand", "what is", "who is", "concept"]
     entities = ["internet", "web", "online"]
 
     priority = 3
     args_schema = WebRetrieverArgs
+
+    MAX_URLS = 4
+    PER_SOURCE_CHARS = 1200
+    TOTAL_CHARS = 4000
 
     def __init__(self, llm):
         self.fetcher = WebFetcher()
@@ -36,130 +33,127 @@ class WebRetrieverTool(BaseTool):
         self.llm = llm
 
     # =========================
-    # 🧠 EXTRACT ENTITY + INTENT (FIXED)
+    # 🧠 CLEAN QUERY
     # =========================
-    def _extract_entity_intent(self, query: str):
+    def _clean_query(self, query: str):
         q = query.lower().strip()
 
-        # 🔥 detect intent
-        intent_keywords = ["ceo", "founder", "president", "capital"]
-
-        intent = None
-        for word in intent_keywords:
-            if word in q:
-                intent = word
-                break
-
-        # 🔥 smarter entity extraction
-        entity = q
-
-        # case 1: "X of Y"
-        if " of " in q:
-            entity = q.split(" of ")[-1]
-
-        # case 2: "who is Y"
-        elif q.startswith("who is"):
-            entity = q.replace("who is", "")
-
-        # case 3: "what is Y"
-        elif q.startswith("what is"):
-            entity = q.replace("what is", "")
-
-        # remove noise
-        noise = [
-            "current", "the", "a", "an",
-            "please", "tell me", "explain"
+        fillers = [
+            "please", "can you", "could you",
+            "tell me", "give me", "i want to know"
         ]
 
-        for word in noise:
-            entity = entity.replace(word, "")
+        for f in fillers:
+            if q.startswith(f):
+                q = q[len(f):].strip()
 
-        entity = entity.strip()
-
-        return entity, intent
-
-    # =========================
-    # 🔗 DIRECT WIKI URL
-    # =========================
-    def _direct_url(self, entity: str):
-        q = entity.replace(" ", "_")
-        return f"https://en.wikipedia.org/wiki/{q}"
+        return " ".join(q.split())
 
     # =========================
-    # 🔍 WIKI SEARCH FALLBACK
+    # 🥇 WIKIPEDIA FAST PATH
     # =========================
-    def _search_wikipedia(self, entity: str):
-        search_url = f"https://en.wikipedia.org/w/index.php?search={quote(entity)}"
+    def _wiki_summary(self, query):
+        try:
+            summary = wikipedia.summary(query, sentences=3)
 
-        html = self.fetcher.fetch(search_url)
-        if not html:
-            return None
+            page = wikipedia.page(query)
+            print("DEBUG WIKI SUCCESS")
 
-        soup = BeautifulSoup(html, "html.parser")
+            return [{
+                "url": page.url,
+                "domain": "wikipedia",
+                "text": summary
+            }]
 
-        for link in soup.select("a.mw-search-result-heading"):
-            href = link.get("href")
-            if href:
-                return "https://en.wikipedia.org" + href
+        except Exception as e:
+            print("DEBUG WIKI FAILED:", e)
+            return []
 
-        return None
+    # =========================
+    # 🥈 DUCKDUCKGO SEARCH
+    # =========================
+    def _search_urls(self, query):
+        urls = []
+
+        try:
+            with DDGS() as ddgs:
+                results = ddgs.text(query, max_results=self.MAX_URLS)
+
+                for r in results:
+                    href = r.get("href")
+                    if href:
+                        urls.append(href)
+
+        except Exception as e:
+            print("DEBUG SEARCH ERROR:", e)
+
+        print(f"DEBUG URLS FOUND: {len(urls)}")
+        return urls
+
+    # =========================
+    # 🧹 TEXT FILTER
+    # =========================
+    def _is_valid_text(self, text):
+        return text and len(text.split()) > 40
 
     # =========================
     # 🚀 RUN
     # =========================
     def run(self, **kwargs):
-        query = kwargs.get("query", "")
+        raw_query = kwargs.get("query", "")
 
-        if not query:
+        if not raw_query:
             return "⚠️ No query provided"
 
-        entity, intent = self._extract_entity_intent(query)
+        query = self._clean_query(raw_query)
+        print(f"DEBUG QUERY: {query}")
 
-        urls_to_try = []
+        sources = []
 
-        # 🔹 primary
-        urls_to_try.append(self._direct_url(entity))
+        # =========================
+        # 🥇 WIKIPEDIA FIRST
+        # =========================
+        sources.extend(self._wiki_summary(query))
 
-        # 🔹 fallback
-        fallback_url = self._search_wikipedia(entity)
-        if fallback_url:
-            urls_to_try.append(fallback_url)
+        # =========================
+        # 🥈 WEB SEARCH
+        # =========================
+        urls = self._search_urls(query)
 
-        all_text = ""
-
-        for url in urls_to_try:
+        for url in urls:
             html = self.fetcher.fetch(url)
 
-            # 🔥 DEBUG (keep for now)
-            print("DEBUG URL:", url)
-            print("DEBUG HTML LENGTH:", len(html))
+            if not html:
+                continue
 
             text = self.extractor.extract(html)
 
-            if text and len(text) > 200:
-                all_text = text[:4000]
-                break
+            if not self._is_valid_text(text):
+                continue
 
-        if not all_text:
+            domain = urlparse(url).netloc
+
+            sources.append({
+                "url": url,
+                "domain": domain,
+                "text": text[:self.PER_SOURCE_CHARS]
+            })
+
+        if not sources:
             return "⚠️ Could not retrieve useful content."
 
         # =========================
-        # 🧠 SMART PROMPT
+        # 🧠 MERGE
         # =========================
-        if intent:
-            instruction = f"Find the {intent} of {entity} from the context."
-        else:
-            instruction = "Answer the question."
+        context_parts = []
 
-        prompt = f"""
-{instruction}
+        for i, src in enumerate(sources[:self.MAX_URLS], 1):
+            context_parts.append(
+                f"[Source {i}: {src['domain']}]\n{src['text']}"
+            )
 
-Question: {query}
+        merged = "\n\n---\n\n".join(context_parts)
 
-Context:
-{all_text}
+        print(f"DEBUG FINAL SOURCES: {len(context_parts)}")
 
-Give a precise answer only. No extra explanation.
-"""
-
-        return self.llm.generate_text(prompt)
+        return merged[:self.TOTAL_CHARS]

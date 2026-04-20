@@ -41,14 +41,12 @@ class Executor:
         return True
 
     # =========================
-    # 🧠 OUTPUT KEY RESOLUTION (NEW)
+    # 🧠 OUTPUT KEY RESOLUTION
     # =========================
     def get_output_key(self, tool, action):
-        # 🔥 Preferred: tool-defined output key
         if hasattr(tool, "output_key"):
             return tool.output_key
 
-        # 🔁 Fallback (for existing tools)
         fallback_map = {
             "web_search": "search_results",
             "web_retriever": "retrieved_content",
@@ -56,6 +54,26 @@ class Executor:
         }
 
         return fallback_map.get(action)
+
+    # =========================
+    # 🧠 CONTEXT INJECTION (NEW CORE)
+    # =========================
+    def inject_context(self, action, args_dict, context):
+        if not context:
+            return args_dict
+
+        # 🔥 explain should use retrieved content
+        if action == "explain":
+            retrieved = context.get("retrieved_content")
+            print("DEBUG CONTEXT FETCH:", retrieved)
+
+            if retrieved and self.is_reliable(retrieved):
+                args_dict["context"] = retrieved
+                print("DEBUG: Injecting retrieved_content into explain")
+            else:
+                print("DEBUG: No valid context to inject")
+
+        return args_dict
 
     # =========================
     # 🚀 EXECUTION
@@ -82,11 +100,15 @@ class Executor:
                 args_dict = validated_args.model_dump()
 
                 # =========================
+                # 🧠 CONTEXT INJECTION
+                # =========================
+                args_dict = self.inject_context(step.action, args_dict, context)
+
+                # =========================
                 # 🧠 EXECUTION
                 # =========================
                 result = tool.run(**args_dict)
 
-                # 🔍 Debug (optional but useful)
                 print(f"EXECUTED: {step.action}")
 
                 # =========================
