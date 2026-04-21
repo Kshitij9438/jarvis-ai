@@ -32,106 +32,122 @@ class Planner:
         self.tool_selector = ToolSelector(self.registry)
 
     # =========================
-    # 🧠 CONDITIONAL RETRIEVER LOGIC (NEW)
+    # 🧠 CONDITIONAL RETRIEVER
     # =========================
     def _should_use_retriever(self, query: str) -> bool:
         q = query.lower()
 
         keywords = [
-            "what is", "who is", "explain", "latest",
-            "recent", "in ai", "in ml", "architecture",
-            "theory", "define"
+            "what is", "who is", "explain",
+            "latest", "recent",
+            "architecture", "theory",
+            "define", "in ai", "in ml"
         ]
 
         return any(k in q for k in keywords)
 
+    # =========================
+    # 🚀 MAIN PLANNER
+    # =========================
     def plan(self, user_input: str):
 
-        # =========================
-        # 🧠 Step 0: SEGMENTATION
-        # =========================
-        segments = [s.strip() for s in user_input.split(" and ")]
+        import re
 
         # =========================
-        # 🧠 Step 1: TOOL SELECTION
+        # 🧠 STEP 0: SEGMENTATION
         # =========================
-        matched_tools = self.tool_selector.select(user_input, top_k=2)
+        segments = [
+            s.strip()
+            for s in re.split(r"\band\b|\bthen\b|,", user_input)
+            if s.strip()
+        ]
 
-        tool_names = [t.name for t in matched_tools]
+        print(f"DEBUG: Segments → {segments}")
 
-        # =========================
-        # 🔥 CONDITIONAL RETRIEVER INJECTION (NEW)
-        # =========================
-        if "explain" in tool_names and self._should_use_retriever(user_input):
-            retriever = self.registry.get("web_retriever")
-
-            if retriever and "web_retriever" not in tool_names:
-                matched_tools.append(retriever)
+        all_tasks = []
 
         # =========================
-        # 🔗 Step 1.5: DEPENDENCY EXPANSION
+        # 🧠 STEP 1: PER-SEGMENT PROCESSING
         # =========================
-        final_tools = []
-        added = set()
-
-        for tool in matched_tools:
-            # dependencies first
-            for dep_name in getattr(tool, "requires", []):
-                dep_tool = self.registry.get(dep_name)
-                if dep_tool and dep_tool.name not in added:
-                    final_tools.append(dep_tool)
-                    added.add(dep_tool.name)
-
-            # main tool
-            if tool.name not in added:
-                final_tools.append(tool)
-                added.add(tool.name)
-
-        matched_tools = final_tools
-
-        print(f"DEBUG: Final Matched Tools → {[t.name for t in matched_tools]}")
-
-        if not matched_tools:
-            return Plan(steps=[
-                Action(action="echo", args={"text": "🤔 No matching tool found"})
-            ])
-
-        # =========================
-        # 🧱 Step 2: TASK BUILDING
-        # =========================
-        tasks = []
-
         for segment in segments:
+
+            print(f"\n--- SEGMENT: {segment} ---")
+
+            # 🔍 tool selection
+            segment_tools = self.tool_selector.select(segment, top_k=2)
+            tool_names = [t.name for t in segment_tools]
+
+            # 🔥 conditional retriever
+            if "explain" in tool_names and self._should_use_retriever(segment):
+                retriever = self.registry.get("web_retriever")
+
+                if retriever and "web_retriever" not in tool_names:
+                    segment_tools.append(retriever)
+
+            # 🔗 dependency expansion
+            final_tools = []
+            added = set()
+
+            for tool in segment_tools:
+
+                for dep_name in getattr(tool, "requires", []):
+                    dep_tool = self.registry.get(dep_name)
+                    if dep_tool and dep_tool.name not in added:
+                        final_tools.append(dep_tool)
+                        added.add(dep_tool.name)
+
+                if tool.name not in added:
+                    final_tools.append(tool)
+                    added.add(tool.name)
+
+            segment_tools = final_tools
+
+            print(f"DEBUG: Segment Tools → {[t.name for t in segment_tools]}")
+
+            if not segment_tools:
+                continue
+
+            # 🧱 build tasks
             segment_entities = self.entity_extractor.extract(segment)
 
             segment_tasks = self.task_builder.build_tasks(
                 segment,
-                matched_tools,
+                segment_tools,
                 segment_entities
             )
 
-            tasks.extend(segment_tasks)
+            print(f"DEBUG: Segment Tasks → {segment_tasks}")
 
-        print(f"DEBUG: Raw Tasks → {tasks}")
+            all_tasks.extend(segment_tasks)
 
         # =========================
-        # ⚙️ Step 3: OPTIMIZATION
+        # ❌ NO TASKS
         # =========================
-        tasks = self.optimizer.optimize(tasks)
-        print(f"DEBUG: Optimized Tasks → {tasks}")
-
-        if not tasks:
+        if not all_tasks:
             return Plan(steps=[
                 Action(action="echo", args={"text": "⚠️ Could not build tasks"})
             ])
 
+        print(f"\nDEBUG: ALL TASKS → {all_tasks}")
+
         # =========================
-        # 🔗 Step 4: DEPENDENCY RESOLUTION
+        # ⚙️ STEP 2: OPTIMIZATION
+        # =========================
+        tasks = self.optimizer.optimize(all_tasks)
+        print(f"DEBUG: Optimized Tasks → {tasks}")
+
+        if not tasks:
+            return Plan(steps=[
+                Action(action="echo", args={"text": "⚠️ Tasks vanished after optimization"})
+            ])
+
+        # =========================
+        # 🔗 STEP 3: DEPENDENCY RESOLUTION
         # =========================
         ordered_tasks = self.dependency_resolver.resolve(tasks)
 
         # =========================
-        # 🔥 INTELLIGENT ORDERING FIX (CRITICAL)
+        # 🔥 SMART ORDERING
         # =========================
         def _task_order_key(t):
             if t.type == "web_retriever":
@@ -147,13 +163,12 @@ class Planner:
         print(f"DEBUG: Ordered Tasks → {ordered_tasks}")
 
         # =========================
-        # ⚙️ Step 5: TASK → ACTIONS
+        # ⚙️ STEP 4: TASK → ACTIONS
         # =========================
         steps = []
 
         for task in ordered_tasks:
             args = {}
-
             tool = self.registry.get(task.type)
 
             # 🌐 URL handling
@@ -164,7 +179,7 @@ class Planner:
             if task.file_path:
                 args["file_path"] = task.file_path
 
-            # 🧠 SMART ARG MAPPING
+            # 🧠 argument mapping
             if tool and task.query:
                 try:
                     schema = tool.args_schema.model_json_schema()
@@ -187,26 +202,29 @@ class Planner:
         print(f"DEBUG: Steps → {steps}")
 
         # =========================
-        # ✅ Step 6: VALIDATION
+        # ✅ STEP 5: VALIDATION
         # =========================
         plan = Plan(steps=steps)
         plan = self.validator.validate(plan)
         print(f"DEBUG: Validated Plan → {plan}")
 
         # =========================
-        # 🧠 Step 7: INTELLIGENCE
+        # 🧠 STEP 6: INTELLIGENCE
         # =========================
         plan = self.intelligence.refine(plan)
         print(f"DEBUG: Final Plan → {plan}")
 
         # =========================
-        # 🧠 Step 8: SCORING
+        # 🧠 STEP 7: SCORING
         # =========================
         score = self.scorer.score(plan)
         print(f"DEBUG: Plan Score → {score}")
 
         return plan
 
+    # =========================
+    # 🌐 URL NORMALIZATION
+    # =========================
     def _normalize_url(self, site: str) -> str:
         site = site.strip().lower()
 
