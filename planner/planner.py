@@ -12,6 +12,7 @@ from planner.intelligence import PlannerIntelligence
 from planner.scorer import PlanScorer
 
 from planner.tool_selector import ToolSelector
+from control.control_layer import ControlLayer
 
 
 class Planner:
@@ -30,6 +31,7 @@ class Planner:
         self.scorer = PlanScorer(registry=self.registry)
 
         self.tool_selector = ToolSelector(self.registry)
+        self.control_layer = ControlLayer()
 
     # =========================
     # 🧠 CONDITIONAL RETRIEVER
@@ -45,11 +47,19 @@ class Planner:
         ]
 
         return any(k in q for k in keywords)
-
+    def _is_trivial_input(self, text: str) -> bool:
+        t = text.lower().strip()
+        greetings = {
+        "hi", "hello", "hey", "yo", "sup",
+        "good morning", "good afternoon", "good evening"}
+        return t in greetings or len(t) <= 3
     # =========================
     # 🚀 MAIN PLANNER
     # =========================
-    def plan(self, user_input: str):
+    def plan(self, user_input: str,context = None):
+        if self._is_trivial_input(user_input):
+            return Plan(steps=[
+        Action(action="echo", args={"text": "Hey! How can I help you?"})])
 
         import re
 
@@ -74,7 +84,7 @@ class Planner:
             print(f"\n--- SEGMENT: {segment} ---")
 
             # 🔍 tool selection
-            segment_tools = self.tool_selector.select(segment, top_k=2)
+            segment_tools = self.tool_selector.select(segment, top_k=2, context=context)
             tool_names = [t.name for t in segment_tools]
 
             # 🔥 conditional retriever
@@ -214,11 +224,16 @@ class Planner:
         plan = self.intelligence.refine(plan)
         print(f"DEBUG: Final Plan → {plan}")
 
+        plan = self.control_layer.refine_plan(plan, context)
+        print(f"DEBUG: Final Controlled Plan → {plan}")
+
         # =========================
         # 🧠 STEP 7: SCORING
         # =========================
         score = self.scorer.score(plan)
         print(f"DEBUG: Plan Score → {score}")
+
+
 
         return plan
 

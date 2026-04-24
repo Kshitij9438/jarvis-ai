@@ -13,7 +13,7 @@ from rag.retriever import Retriever
 from rag.ingestor import Ingestor
 
 from tools.calculator_tool import CalculatorTool
-from tools.web_search_tool import WebSearchTool
+
 from tools.web_retriever_tool import WebRetrieverTool
 
 # 🔥 NEW
@@ -43,7 +43,7 @@ if __name__ == "__main__":
     registry.register(LoadDocTool(rag))
     registry.register(ExplainTool())
     registry.register(CalculatorTool())
-    registry.register(WebSearchTool(llm=planner.llm))
+    #registry.register(WebSearchTool(llm=planner.llm))
     registry.register(WebRetrieverTool(planner.llm))
 
     # =========================
@@ -68,7 +68,7 @@ if __name__ == "__main__":
         # =========================
         # 🧠 PLAN
         # =========================
-        plan = planner.plan(user_input)
+        plan = planner.plan(user_input,context)
 
         if plan is None or not plan.steps:
             print("⚠️ No valid plan generated.")

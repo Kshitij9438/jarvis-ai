@@ -27,6 +27,11 @@ class WebRetrieverTool(BaseTool):
     PER_SOURCE_CHARS = 1200
     TOTAL_CHARS = 4000
 
+    BLOCKED_DOMAINS = {
+        "youtube.com", "facebook.com", "instagram.com",
+        "twitter.com", "tiktok.com", "pinterest.com"
+    }
+
     def __init__(self, llm):
         self.fetcher = WebFetcher()
         self.extractor = TextExtractor()
@@ -50,39 +55,75 @@ class WebRetrieverTool(BaseTool):
         return " ".join(q.split())
 
     # =========================
-    # 🥇 WIKIPEDIA FAST PATH
+    # 🥇 WIKIPEDIA (ROBUST)
     # =========================
     def _wiki_summary(self, query):
         try:
-            summary = wikipedia.summary(query, sentences=3)
+            # Try direct
+            try:
+                summary = wikipedia.summary(query, sentences=3)
+                page = wikipedia.page(query)
+                print("DEBUG WIKI DIRECT SUCCESS")
+                return [{
+                    "url": page.url,
+                    "domain": "wikipedia",
+                    "text": summary
+                }]
+            except:
+                pass
 
-            page = wikipedia.page(query)
-            print("DEBUG WIKI SUCCESS")
+            # Fallback → search best match
+            results = wikipedia.search(query)
 
-            return [{
-                "url": page.url,
-                "domain": "wikipedia",
-                "text": summary
-            }]
+            if results:
+                best = results[0]
+                summary = wikipedia.summary(best, sentences=3)
+                page = wikipedia.page(best)
+
+                print(f"DEBUG WIKI SEARCH SUCCESS: {best}")
+
+                return [{
+                    "url": page.url,
+                    "domain": "wikipedia",
+                    "text": summary
+                }]
 
         except Exception as e:
             print("DEBUG WIKI FAILED:", e)
-            return []
+
+        return []
 
     # =========================
     # 🥈 DUCKDUCKGO SEARCH
     # =========================
     def _search_urls(self, query):
         urls = []
+        seen = set()
 
         try:
             with DDGS() as ddgs:
-                results = ddgs.text(query, max_results=self.MAX_URLS)
+                results = ddgs.text(query, max_results=self.MAX_URLS * 2)
 
                 for r in results:
                     href = r.get("href")
-                    if href:
-                        urls.append(href)
+
+                    if not href:
+                        continue
+
+                    domain = urlparse(href).netloc.lower()
+
+                    # filter junk domains
+                    if any(b in domain for b in self.BLOCKED_DOMAINS):
+                        continue
+
+                    if domain in seen:
+                        continue
+
+                    seen.add(domain)
+                    urls.append(href)
+
+                    if len(urls) >= self.MAX_URLS:
+                        break
 
         except Exception as e:
             print("DEBUG SEARCH ERROR:", e)
@@ -94,7 +135,20 @@ class WebRetrieverTool(BaseTool):
     # 🧹 TEXT FILTER
     # =========================
     def _is_valid_text(self, text):
-        return text and len(text.split()) > 40
+        if not text:
+            return False
+
+        words = text.split()
+
+        if len(words) < 40:
+            return False
+
+        avg_len = sum(len(w) for w in words) / len(words)
+
+        if avg_len < 3:
+            return False
+
+        return True
 
     # =========================
     # 🚀 RUN
@@ -113,7 +167,8 @@ class WebRetrieverTool(BaseTool):
         # =========================
         # 🥇 WIKIPEDIA FIRST
         # =========================
-        sources.extend(self._wiki_summary(query))
+        wiki_sources = self._wiki_summary(query)
+        sources.extend(wiki_sources)
 
         # =========================
         # 🥈 WEB SEARCH
@@ -124,11 +179,13 @@ class WebRetrieverTool(BaseTool):
             html = self.fetcher.fetch(url)
 
             if not html:
+                print(f"DEBUG FETCH FAIL: {url}")
                 continue
 
             text = self.extractor.extract(html)
 
             if not self._is_valid_text(text):
+                print(f"DEBUG LOW QUALITY: {url}")
                 continue
 
             domain = urlparse(url).netloc
@@ -139,6 +196,9 @@ class WebRetrieverTool(BaseTool):
                 "text": text[:self.PER_SOURCE_CHARS]
             })
 
+        # =========================
+        # ❌ NO DATA
+        # =========================
         if not sources:
             return "⚠️ Could not retrieve useful content."
 
