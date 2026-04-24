@@ -1,5 +1,6 @@
 from planner.task import Task
 from calculator.parser import CalculatorParser
+import os
 
 
 class TaskBuilder:
@@ -14,26 +15,24 @@ class TaskBuilder:
         for tool in matched_tools:
 
             # =========================
-            # 🧮 CALCULATOR (STRICT + CLEAN)
+            # 🧮 CALCULATOR (STRICT)
             # =========================
             if tool.name == "calculator":
                 expr = self.calculator_parser.parse(user_input)
 
-                # ❌ skip if no valid expression
                 if not expr:
                     continue
 
-                task = Task(
+                tasks.append(Task(
                     type="calculator",
                     target=None,
                     file_path=None,
                     query=expr
-                )
-                tasks.append(task)
-                continue  # 🔥 do not fall through
+                ))
+                continue
 
             # =========================
-            # 🧠 ARG EXTRACTION (SAFE)
+            # 🧠 SAFE ARG EXTRACTION (LOW TRUST)
             # =========================
             try:
                 extracted = self.arg_extractor.extract(user_input, tool) or {}
@@ -41,13 +40,22 @@ class TaskBuilder:
                 extracted = {}
 
             # =========================
-            # 🧱 ENTITY MERGE
+            # 🧱 ENTITY PRIORITY (HIGH TRUST)
             # =========================
-            if entities.get("file_path"):
-                extracted["file_path"] = entities["file_path"]
+            file_path = None
+            url = None
 
+            # 🔥 STRICT FILE PATH VALIDATION
+            if entities.get("file_path"):
+                fp = entities["file_path"]
+
+                # only accept if actually exists
+                if isinstance(fp, str) and os.path.exists(fp):
+                    file_path = fp
+
+            # 🔥 WEBSITE ENTITY
             if entities.get("websites"):
-                extracted["url"] = entities["websites"][0]
+                url = entities["websites"][0]
 
             query = extracted.get("query")
 
@@ -55,12 +63,15 @@ class TaskBuilder:
             # 🧠 TOOL-SPECIFIC LOGIC
             # =========================
 
-            # 🌐 WEB RETRIEVER (CLEAN QUERY)
+            # 🌐 WEB RETRIEVER
             if tool.name == "web_retriever":
                 if not query or len(query.strip()) < 3:
                     query = self._clean_query(user_input)
 
-            # 🧠 EXPLAIN (USE ENTITIES FIRST)
+                if not query:
+                    continue  # 🔥 skip useless retrieval
+
+            # 🧠 EXPLAIN
             elif tool.name == "explain":
                 if entities.get("topics"):
                     query = entities["topics"][0]
@@ -68,38 +79,47 @@ class TaskBuilder:
                 elif not query or len(query.strip()) < 3:
                     query = self._clean_query(user_input)
 
-            # 📄 RAG SEARCH
+                if not query:
+                    continue
+
+            # 📄 RAG SEARCH (ONLY IF DOCUMENT CONTEXT EXISTS)
             elif tool.name == "rag_search":
+                if not file_path:
+                    continue  # 🔥 DO NOT hallucinate document usage
+
                 if "summarize" in text:
                     query = "summarize the document"
-                elif not query or len(query.strip()) < 3:
-                    query = "summarize the document"
+                else:
+                    query = extracted.get("query") or "summarize the document"
 
             # 🌐 OPEN WEBSITE
             elif tool.name == "open_website":
-                if entities.get("websites"):
-                    extracted["url"] = entities["websites"][0]
+                if not url:
+                    continue
 
             # =========================
-            # 🔁 FINAL FALLBACK
+            # 🔁 FINAL FALLBACK (SAFE)
             # =========================
             if not query:
-                query = self._clean_query(user_input)
+                cleaned = self._clean_query(user_input)
+
+                if not cleaned:
+                    continue
+
+                query = cleaned
 
             # =========================
             # 🧱 BUILD TASK
             # =========================
-            task = Task(
+            tasks.append(Task(
                 type=tool.name,
-                target=extracted.get("url"),
-                file_path=extracted.get("file_path"),
+                target=url,
+                file_path=file_path,
                 query=query
-            )
-
-            tasks.append(task)
+            ))
 
         # =========================
-        # 🔥 DEDUPLICATION (CRITICAL)
+        # 🔥 DEDUPLICATION
         # =========================
         unique_tasks = []
         seen = set()
@@ -114,7 +134,7 @@ class TaskBuilder:
         return unique_tasks
 
     # =========================
-    # 🧠 QUERY CLEANER (SHARED)
+    # 🧠 QUERY CLEANER
     # =========================
     def _clean_query(self, query: str) -> str:
         q = query.lower().strip()
@@ -128,4 +148,10 @@ class TaskBuilder:
         for f in fillers:
             q = q.replace(f, " ")
 
-        return " ".join(q.split())
+        q = " ".join(q.split())
+
+        # 🔥 reject useless queries
+        if len(q) < 3:
+            return ""
+
+        return q

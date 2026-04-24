@@ -95,4 +95,4 @@ if __name__ == "__main__":
         # =========================
         print("\n🧠 CONTEXT STATE:")
         print("History:", context.history)
-        print("Stored Outputs:", context.tool_outputs)
+        print("🧠 CONTEXT:", context.debug())

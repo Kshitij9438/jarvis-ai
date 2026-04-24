@@ -29,16 +29,18 @@ class LoadDocTool(BaseTool):
         "path"
     ]
 
-    # ⚡ should run BEFORE rag_search
     priority = 1
-
     args_schema = LoadDocArgs
 
+    # =========================
+    # 🧠 CONTEXT CONTRACT
+    # =========================
+    requires_context = []
+    produces_context = ["document"]
+
     def __init__(self, rag):
-        self.rag = rag  # ✅ shared system
+        self.rag = rag
 
     def run(self, **kwargs):
         file_path = kwargs["file_path"]
-
-        # 🔥 delegate to RAG system
         return self.rag.load_file(file_path)

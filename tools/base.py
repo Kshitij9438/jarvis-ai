@@ -3,19 +3,57 @@ from typing import Type, List
 
 
 class BaseTool:
+    """
+    Base class for all tools in the system.
+
+    Defines:
+    - identity (name, description)
+    - argument schema
+    - matching signals (intents, entities)
+    - execution behavior
+
+    NEW ARCHITECTURE:
+    - requires_context → what data this tool NEEDS
+    - produces_context → what data this tool GENERATES
+    """
+
+    # =========================
+    # 🧩 CORE IDENTITY
+    # =========================
     name: str
     description: str
     args_schema: Type[BaseModel]
 
-    # 🧠 NEW — tool self-description (core of new architecture)
-    intents: List[str] = []       # e.g. ["open", "visit", "launch"]
-    entities: List[str] = []      # e.g. ["url", "website", "file_path"]
+    # =========================
+    # 🧠 MATCHING SIGNALS
+    # =========================
+    intents: List[str] = []
+    entities: List[str] = []
 
-    # 🔗 NEW — dependencies
-    requires: List[str] = []      # e.g. ["load_document"]
+    # =========================
+    # 🔗 LEGACY DEPENDENCIES (KEEP FOR NOW)
+    # =========================
+    requires: List[str] = []   # 🔁 old system (do not remove yet)
 
-    # ⚡ NEW — execution priority (lower = earlier)
+    # =========================
+    # ⚡ EXECUTION PRIORITY
+    # =========================
     priority: int = 5
 
+    # =========================
+    # 🧠 CONTEXT CONTRACTS (NEW — CRITICAL)
+    # =========================
+
+    # What context this tool NEEDS
+    # Example: ["web"], ["document"]
+    requires_context: List[str] = []
+
+    # What context this tool PRODUCES
+    # Example: ["web"], ["document"]
+    produces_context: List[str] = []
+
+    # =========================
+    # 🚀 EXECUTION
+    # =========================
     def run(self, **kwargs):
-        raise NotImplementedError
+        raise NotImplementedError("Tool must implement run()")

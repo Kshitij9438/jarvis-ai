@@ -84,29 +84,6 @@ class SafeEvaluator:
 class ExpressionNormalizer:
     def normalize(self, text: str) -> str:
         text = text.lower()
-
-        # basic replacements
-        replacements = {
-            "plus": "+",
-            "minus": "-",
-            "times": "*",
-            "multiplied by": "*",
-            "x": "*",
-            "divide by": "/",
-            "divided by": "/",
-            "mod": "%",
-            "power of": "**",
-        }
-
-        for k, v in replacements.items():
-            text = text.replace(k, v)
-
-        # remove filler words
-        text = re.sub(r"(what is|calculate|compute|evaluate)", "", text)
-
-        return text.strip()
-    def normalize(self, text: str) -> str:
-        text = text.lower()
         text = re.sub(r"divide (\d+(?:\.\d+)?) by (\d+(?:\.\d+)?)", r"\1 / \2", text)
         text = re.sub(r"multiply (\d+(?:\.\d+)?) by (\d+(?:\.\d+)?)", r"\1 * \2", text)
         text = re.sub(r"add (\d+(?:\.\d+)?) and (\d+(?:\.\d+)?)", r"\1 + \2", text)
@@ -152,6 +129,8 @@ class CalculatorTool(BaseTool):
 
     args_schema = CalculatorArgs
     priority = 1
+    requires_context = []
+    produces_context = ["calculation"]
 
     def __init__(self):
         self.evaluator = SafeEvaluator()

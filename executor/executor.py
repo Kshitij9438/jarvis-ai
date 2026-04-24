@@ -3,7 +3,7 @@ class Executor:
         self.registry = registry
 
     # =========================
-    # 🔧 NORMALIZATION LAYER
+    # 🔧 NORMALIZATION
     # =========================
     def normalize_args(self, action, args):
         args = args.copy()
@@ -41,39 +41,40 @@ class Executor:
         return True
 
     # =========================
-    # 🧠 OUTPUT KEY RESOLUTION
+    # 🧠 CONTEXT FETCH (STRICT + CLEAN)
     # =========================
-    def get_output_key(self, tool, action):
-        if hasattr(tool, "output_key"):
-            return tool.output_key
-
-        fallback_map = {
-            "web_search": "search_results",
-            "web_retriever": "retrieved_content",
-            "calculator": "calculation_result",
-        }
-
-        return fallback_map.get(action)
-
-    # =========================
-    # 🧠 CONTEXT INJECTION (NEW CORE)
-    # =========================
-    def inject_context(self, action, args_dict, context):
+    def get_context_for_tool(self, tool, context):
         if not context:
-            return args_dict
+            return None
 
-        # 🔥 explain should use retrieved content
-        if action == "explain":
-            retrieved = context.get("retrieved_content")
-            print("DEBUG CONTEXT FETCH:", retrieved)
+        required = getattr(tool, "requires_context", [])
 
-            if retrieved and self.is_reliable(retrieved):
-                args_dict["context"] = retrieved
-                print("DEBUG: Injecting retrieved_content into explain")
-            else:
-                print("DEBUG: No valid context to inject")
+        if not required:
+            return None
 
-        return args_dict
+        collected = []
+
+        for ctx_type in required:
+            if not context.has(ctx_type):
+                continue
+
+            data = context.get(ctx_type)
+
+            # 🔥 Clean list → string
+            if isinstance(data, list):
+                data = "\n\n".join(map(str, data))
+
+            if data:
+                collected.append(str(data))
+
+        if not collected:
+            return None
+
+        final_context = "\n\n".join(collected)
+
+        print(f"[Executor] Injecting context → {tool.name} | types={required}")
+
+        return final_context
 
     # =========================
     # 🚀 EXECUTION
@@ -85,6 +86,12 @@ class Executor:
         results = []
 
         for step in plan.steps:
+
+            # 🔥 execution safety guard
+            if context and context.step_count >= context.max_steps:
+                print("⚠️ Max steps reached — stopping execution")
+                break
+
             tool = self.registry.get(step.action)
 
             if tool is None:
@@ -100,16 +107,24 @@ class Executor:
                 args_dict = validated_args.model_dump()
 
                 # =========================
-                # 🧠 CONTEXT INJECTION
+                # 🧠 CONTEXT INJECTION (SAFE)
                 # =========================
-                args_dict = self.inject_context(step.action, args_dict, context)
+                tool_context = self.get_context_for_tool(tool, context)
+
+                # 🔥 Only inject if tool actually supports it
+                if tool_context and "context" in tool.args_schema.model_fields:
+                    args_dict["context"] = tool_context
 
                 # =========================
-                # 🧠 EXECUTION
+                # 🚀 EXECUTE
                 # =========================
                 result = tool.run(**args_dict)
 
                 print(f"EXECUTED: {step.action}")
+
+                # 🔍 Debug context usage
+                if tool_context:
+                    print(f"[Executor] Context used for {tool.name}:\n{tool_context[:200]}...")
 
                 # =========================
                 # 🧠 UPDATE CONTEXT
@@ -118,10 +133,8 @@ class Executor:
                     context.update(step.action, args_dict, result)
 
                     if self.is_reliable(result):
-                        output_key = self.get_output_key(tool, step.action)
-
-                        if output_key:
-                            context.store(output_key, result)
+                        for ctx_type in getattr(tool, "produces_context", []):
+                            context.store(ctx_type, result)
 
                 results.append(result)
 

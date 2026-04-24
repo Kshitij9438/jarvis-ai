@@ -22,6 +22,8 @@ class OpenWebsiteTool(BaseTool):
     priority = 1
 
     args_schema = OpenWebsiteArgs
+    requires_context = []
+    produces_context = ["web"]
 
     def run(self, **kwargs):
         webbrowser.open(kwargs["url"])
@@ -47,6 +49,8 @@ class EchoTool(BaseTool):
     priority = 10
 
     args_schema = EchoArgs
+    requires_context = []
+    produces_context = []
 
     def run(self, **kwargs):
         return kwargs["text"]

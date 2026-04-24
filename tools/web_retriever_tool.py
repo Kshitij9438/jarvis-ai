@@ -22,6 +22,12 @@ class WebRetrieverTool(BaseTool):
 
     priority = 3
     args_schema = WebRetrieverArgs
+    # =========================
+    # 🧠 CONTEXT CONTRACT (CRITICAL)
+    # =========================
+
+    requires_context = []
+    produces_context = ["web"]
 
     MAX_URLS = 4
     PER_SOURCE_CHARS = 1200

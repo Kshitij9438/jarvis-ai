@@ -29,9 +29,16 @@ class RAGTool(BaseTool):
         "content"
     ]
 
+    # 🔁 KEEP (legacy system — do not remove yet)
     requires = ["load_document"]
-    priority = 2
 
+    # =========================
+    # 🧠 CONTEXT CONTRACT (NEW)
+    # =========================
+    requires_context = ["document"]
+    produces_context = []
+
+    priority = 2
     args_schema = RAGArgs
 
     def __init__(self, rag):
@@ -47,15 +54,11 @@ class RAGTool(BaseTool):
             return "⚠️ No document loaded. Please load a file before querying."
 
         # =========================
-        # 🧠 CLEAN QUERY (CRITICAL FIX)
+        # 🧠 CLEAN QUERY
         # =========================
         if query:
-            # remove file paths
             query = re.sub(r"[A-Za-z]:\\\\[^\s]+", "", query)
-
-            # remove quotes
             query = query.replace('"', "").replace("'", "")
-
             query = query.strip()
 
         # =========================
@@ -64,7 +67,6 @@ class RAGTool(BaseTool):
         if not query or len(query) < 3:
             query = "summarize the document"
 
-        # normalize summarize intent
         if "summarize" in query.lower():
             query = "summarize the document"
 
@@ -72,7 +74,7 @@ class RAGTool(BaseTool):
             result = self.rag.answer(query)
 
             # =========================
-            # 🚨 BLOCK STRUCTURED / JSON LEAKS
+            # 🚨 OUTPUT SAFETY
             # =========================
             if isinstance(result, dict):
                 return "⚠️ Invalid RAG output. Try again."
@@ -80,7 +82,6 @@ class RAGTool(BaseTool):
             if isinstance(result, str):
                 stripped = result.strip()
 
-                # block JSON-like output
                 if stripped.startswith("{") or stripped.startswith("["):
                     return "⚠️ Invalid structured output from RAG."
 

@@ -1,7 +1,6 @@
 from planner.schema import Plan, Action
 
 from planner.task_builder import TaskBuilder
-from planner.dependency_resolver import DependencyResolver
 from planner.entity_extractor import EntityExtractor
 from planner.arg_extractor import ArgExtractor
 
@@ -13,6 +12,7 @@ from planner.scorer import PlanScorer
 
 from planner.tool_selector import ToolSelector
 from control.control_layer import ControlLayer
+from execution.context_dependency import ContextDependencyResolver
 
 
 class Planner:
@@ -22,7 +22,6 @@ class Planner:
         self.llm = LLM()
         self.arg_extractor = ArgExtractor(self.llm)
         self.task_builder = TaskBuilder(self.arg_extractor)
-        self.dependency_resolver = DependencyResolver(self.registry)
         self.entity_extractor = EntityExtractor()
 
         self.optimizer = TaskOptimizer()
@@ -32,9 +31,10 @@ class Planner:
 
         self.tool_selector = ToolSelector(self.registry)
         self.control_layer = ControlLayer()
+        self.context_resolver = ContextDependencyResolver(self.registry)
 
     # =========================
-    # 🧠 CONDITIONAL RETRIEVER
+    # 🧠 CONDITIONAL RETRIEVER (OPTIONAL SAFETY)
     # =========================
     def _should_use_retriever(self, query: str) -> bool:
         q = query.lower()
@@ -47,19 +47,24 @@ class Planner:
         ]
 
         return any(k in q for k in keywords)
+
     def _is_trivial_input(self, text: str) -> bool:
         t = text.lower().strip()
         greetings = {
-        "hi", "hello", "hey", "yo", "sup",
-        "good morning", "good afternoon", "good evening"}
+            "hi", "hello", "hey", "yo", "sup",
+            "good morning", "good afternoon", "good evening"
+        }
         return t in greetings or len(t) <= 3
+
     # =========================
     # 🚀 MAIN PLANNER
     # =========================
-    def plan(self, user_input: str,context = None):
+    def plan(self, user_input: str, context=None):
+
         if self._is_trivial_input(user_input):
             return Plan(steps=[
-        Action(action="echo", args={"text": "Hey! How can I help you?"})])
+                Action(action="echo", args={"text": "Hey! How can I help you?"})
+            ])
 
         import re
 
@@ -87,19 +92,17 @@ class Planner:
             segment_tools = self.tool_selector.select(segment, top_k=2, context=context)
             tool_names = [t.name for t in segment_tools]
 
-            # 🔥 conditional retriever
+            # 🔥 OPTIONAL BOOST (can remove later)
             if "explain" in tool_names and self._should_use_retriever(segment):
                 retriever = self.registry.get("web_retriever")
-
                 if retriever and "web_retriever" not in tool_names:
                     segment_tools.append(retriever)
 
-            # 🔗 dependency expansion
+            # 🔗 dependency expansion (STATIC ONLY)
             final_tools = []
             added = set()
 
             for tool in segment_tools:
-
                 for dep_name in getattr(tool, "requires", []):
                     dep_tool = self.registry.get(dep_name)
                     if dep_tool and dep_tool.name not in added:
@@ -152,24 +155,13 @@ class Planner:
             ])
 
         # =========================
-        # 🔗 STEP 3: DEPENDENCY RESOLUTION
-        # =========================
-        ordered_tasks = self.dependency_resolver.resolve(tasks)
-
-        # =========================
-        # 🔥 SMART ORDERING
+        # 🔗 STEP 3: CLEAN ORDERING
         # =========================
         def _task_order_key(t):
-            if t.type == "web_retriever":
-                return 0
-            if t.type == "explain":
-                return 1
-
             tool = self.registry.get(t.type)
             return tool.priority if tool else 5
 
-        ordered_tasks.sort(key=_task_order_key)
-
+        ordered_tasks = sorted(tasks, key=_task_order_key)
         print(f"DEBUG: Ordered Tasks → {ordered_tasks}")
 
         # =========================
@@ -222,18 +214,26 @@ class Planner:
         # 🧠 STEP 6: INTELLIGENCE
         # =========================
         plan = self.intelligence.refine(plan)
-        print(f"DEBUG: Final Plan → {plan}")
-
-        plan = self.control_layer.refine_plan(plan, context)
-        print(f"DEBUG: Final Controlled Plan → {plan}")
+        print(f"DEBUG: Intelligent Plan → {plan}")
 
         # =========================
-        # 🧠 STEP 7: SCORING
+        # 🧠 STEP 7: CONTROL LAYER
+        # =========================
+        plan = self.control_layer.refine_plan(plan, context)
+        print(f"DEBUG: Controlled Plan → {plan}")
+
+        # =========================
+        # 🧠 STEP 8: CONTEXT DEPENDENCY RESOLUTION (CRITICAL)
+        # =========================
+        resolved_steps = self.context_resolver.resolve(plan.steps, context)
+        plan = Plan(steps=resolved_steps)
+        print(f"DEBUG: Context-Resolved Plan → {plan}")
+
+        # =========================
+        # 🧠 STEP 9: SCORING
         # =========================
         score = self.scorer.score(plan)
         print(f"DEBUG: Plan Score → {score}")
-
-
 
         return plan
 

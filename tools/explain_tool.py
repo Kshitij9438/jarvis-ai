@@ -6,11 +6,11 @@ from pydantic import BaseModel
 
 
 # =========================
-# 📦 ARG SCHEMA (UPDATED)
+# 📦 ARG SCHEMA
 # =========================
 class ExplainArgs(BaseModel):
     query: str
-    context: str | None = None  # 🔥 NEW
+    context: str | None = None
 
 
 class ExplainTool(BaseTool):
@@ -43,15 +43,25 @@ class ExplainTool(BaseTool):
     priority = 1
     args_schema = ExplainArgs
 
+    # =========================
+    # 🧠 CONTEXT CONTRACT (FIXED)
+    # =========================
+
+    # 🔥 Explain BENEFITS from web context
+    requires_context = ["web"]   # ← KEY CHANGE
+
+    # Explain does not produce context
+    produces_context = []
+
     def __init__(self):
         self.llm = LLM()
 
     # =========================
-    # 🚀 RUN (CONTEXT-AWARE)
+    # 🚀 RUN
     # =========================
     def run(self, query: str, context: str = None):
 
-        # 🔥 CASE 1: WITH CONTEXT (RAG MODE)
+        # 🔥 WITH CONTEXT (PREFERRED)
         if context:
             prompt = f"""
 Use the following context to explain the concept.
@@ -64,7 +74,7 @@ Context:
 Give a clear, accurate, and concise explanation.
 """
         else:
-            # 🔁 FALLBACK
+            # 🔁 FALLBACK (still works)
             prompt = f"""
 Explain clearly and concisely:
 
