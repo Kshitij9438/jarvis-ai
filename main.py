@@ -18,7 +18,7 @@ from tools.web_retriever_tool import WebRetrieverTool
 
 # 🔥 NEW
 from execution.context import ExecutionContext
-
+from control.execution_loop import ExecutionLoop
 
 if __name__ == "__main__":
     # =========================
@@ -85,7 +85,8 @@ if __name__ == "__main__":
         # =========================
         # ⚙️ EXECUTE (CONTEXT-AWARE)
         # =========================
-        results = executor.execute(plan, context)
+        loop = ExecutionLoop(executor)
+        results = loop.run(plan, context)
 
         for result in results:
             print("RESULT:", result)

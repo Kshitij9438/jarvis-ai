@@ -444,11 +444,16 @@ class ControlLayer:
 
             # -- query-dependent tools: must have a meaningful query --
             elif action in QUERY_DEPENDENT_TOOLS:
-                query = str(args.get("query", args.get("expression", ""))).strip()
-
+                if action == "calculator":
+                    expr = str(args.get("expression", "")).strip()
+                    if not expr:
+                        print("ControlLayer [intent]: calculator removed — empty expression.")
+                        continue
+                    valid.append(step)
+                    continue
+                query = str(args.get("query", "")).strip()
                 if not _is_meaningful_query(query):
-                    print(f"ControlLayer [intent]: {action} removed — "
-                          f"meaningless query: '{query}'")
+                    print(f"ControlLayer [intent]: {action} removed — "f"meaningless query: '{query}'")
                     continue
 
                 # Extra guard: explain / web_retriever on a purely
