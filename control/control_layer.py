@@ -156,43 +156,80 @@ def _is_meaningful_query(query: Optional[str]) -> bool:
 
 def _is_document_loaded(context) -> bool:
     """
-    Heuristically determine whether a document has already been loaded
-    by inspecting the execution context.
+    Determine whether a document has already been loaded by inspecting
+    the execution context.
+
+    Reads context._buckets["document"] directly — the same source
+    ContextDependencyResolver._get_available_context already reads
+    correctly. An earlier version of this function checked
+    context.document_loaded and context.tool_outputs, neither of
+    which ExecutionContext ever sets (it stores everything under
+    _buckets), so it always silently returned False regardless of
+    what had actually been loaded. The history fallback below is a
+    secondary signal — kept for the edge case where a load_document
+    call succeeded but Executor's "only store on success"
+    content-length filter (>20 chars) happened to drop a short
+    success message before it reached the bucket.
     """
     if context is None:
         return False
 
-    # Explicit flag (future-proofing: callers may set context.document_loaded)
-    if getattr(context, "document_loaded", False):
+    buckets = getattr(context, "_buckets", None)
+    if buckets and buckets.get("document"):
         return True
 
-    # Check tool_outputs for any load_document output
-    tool_outputs = getattr(context, "tool_outputs", {}) or {}
-    if tool_outputs.get("document_loaded"):
-        return True
-
-    # Walk execution history
+    # Fallback: walk execution history for a load_document call whose
+    # result doesn't look like a failure. Catches the edge case above
+    # where the bucket itself might be empty but a load actually
+    # succeeded (e.g. Executor's content-length filter trimmed it).
     history = getattr(context, "history", []) or []
     for entry in history:
         tool = entry.get("tool", "") if isinstance(entry, dict) else getattr(entry, "tool", "")
         if tool == "load_document":
             result = entry.get("result", "") if isinstance(entry, dict) else getattr(entry, "result", "")
-            result_str = str(result).lower()
-            # Consider loaded if result is not an error
-            if not any(sig in result_str for sig in ("⚠️", "error", "failed", "not found")):
+            result_str = str(result).strip()
+            if not result_str.startswith("⚠️") and not result_str.startswith("❌"):
                 return True
 
     return False
 
 
 def _has_retrieved_content(context) -> bool:
-    """Return True if the context already holds retrieved/search content."""
+    """
+    Return True if a real web RETRIEVAL has already produced grounding
+    content in this context — specifically web_retriever output, not
+    just any activity in the "web" bucket.
+
+    Why this can't be a simple bucket-presence check: both
+    OpenWebsiteTool and WebRetrieverTool write into _buckets["web"]
+    (both declare produces_context = ["web"]), but OpenWebsiteTool's
+    output is a fixed confirmation string ("Opened {url}") with zero
+    informational content about the page itself. Treating that string
+    as "retrieval done" would wrongly skip a real web_retriever call
+    later in _apply_context_optimizations purely because some earlier
+    open_website call happened.
+
+    So this checks context.history for an actual web_retriever entry
+    with a non-failure result, the same way _is_document_loaded
+    distinguishes a real load from no load. The "web" bucket itself is
+    intentionally NOT used as the primary signal here, even though
+    it's where the data eventually lives — bucket presence answers
+    "did something write into 'web'," not "did retrieval specifically
+    happen," and only the latter question is safe to act on here.
+    """
     if context is None:
         return False
-    if getattr(context, "retrieved_content", None):
-        return True
-    tool_outputs = getattr(context, "tool_outputs", {}) or {}
-    return bool(tool_outputs.get("retrieved_content") or tool_outputs.get("search_results"))
+
+    history = getattr(context, "history", []) or []
+    for entry in history:
+        tool = entry.get("tool", "") if isinstance(entry, dict) else getattr(entry, "tool", "")
+        if tool == "web_retriever":
+            result = entry.get("result", "") if isinstance(entry, dict) else getattr(entry, "result", "")
+            result_str = str(result).strip()
+            if result_str and not result_str.startswith("⚠️") and not result_str.startswith("❌"):
+                return True
+
+    return False
 
 
 def _fallback_plan(goal: str) -> Plan:
@@ -222,6 +259,20 @@ class ControlLayer:
     validates, reorders, and sanitizes every Action in a Plan before
     execution — preventing hallucinated arguments, broken dependencies,
     irrelevant tool usage, and bad ordering.
+
+    NOTE on context-grounded injection: this layer does NOT inject
+    retrieved web content into any tool's args (e.g. explain's
+    "context" field). That job belongs entirely to
+    Executor.get_context_for_tool() (see executor/executor.py), which
+    does it generically for any tool declaring requires_context, at
+    execution time, against the freshest context state. An earlier
+    version of this file duplicated that injection here, hardcoded to
+    "explain" only, computed at plan-construction time using whatever
+    the context held at that moment — redundant with Executor's
+    version in the common case, and a real correctness risk for
+    multi-step plans where context changes between plan-time and
+    execute-time. If you're looking for "where does explain get its
+    grounding context," that logic lives in Executor, not here.
     """
 
     # ------------------------------------------------------------------
@@ -288,8 +339,8 @@ class ControlLayer:
         """
         Skip tools whose work is already done according to the context.
 
-          • If retrieved_content already exists  → skip web_retriever
-          • If document is already loaded        → skip load_document
+          • If web_retriever already ran successfully → skip web_retriever
+          • If document is already loaded             → skip load_document
         """
         if context is None:
             return steps
@@ -301,7 +352,7 @@ class ControlLayer:
         for step in steps:
             if step.action == "web_retriever" and has_retrieval:
                 print(f"ControlLayer [ctx-opt]: skipping web_retriever "
-                      f"(retrieved_content already in context)")
+                      f"(retrieval already done in context)")
                 continue
 
             if step.action == "load_document" and doc_loaded:
@@ -453,7 +504,8 @@ class ControlLayer:
                     continue
                 query = str(args.get("query", "")).strip()
                 if not _is_meaningful_query(query):
-                    print(f"ControlLayer [intent]: {action} removed — "f"meaningless query: '{query}'")
+                    print(f"ControlLayer [intent]: {action} removed — "
+                          f"meaningless query: '{query}'")
                     continue
 
                 # Extra guard: explain / web_retriever on a purely
@@ -488,9 +540,13 @@ class ControlLayer:
         """
         Ensure dependency constraints are satisfied:
 
-          • rag_search  requires a loaded document (context OR plan)
-          • explain     should use web_retriever output when available
-          • load_document must not be duplicated within the plan
+          • rag_search     requires a loaded document (context OR plan)
+          • load_document  must not be duplicated within the plan
+
+        This method no longer injects retrieved web content into
+        explain's args — see the ControlLayer class docstring for why
+        that was removed (it duplicated, less generally, what
+        Executor.get_context_for_tool already does correctly).
         """
         actions = [s.action for s in steps]
         doc_loaded_in_context = _is_document_loaded(context)
@@ -507,16 +563,6 @@ class ControlLayer:
                     print("ControlLayer [dep]: rag_search removed — "
                           "no load_document in plan and no document in context.")
                     continue
-
-            # ---- explain: promote to use retrieved content hint ----
-            if step.action == "explain":
-                if _has_retrieved_content(context):
-                    retrieved = getattr(context, "retrieved_content", None)
-                    if retrieved:
-                        step = Action(
-                            action=step.action,
-                            args={**step.args, "context": retrieved}
-                            )
 
             # ---- prevent duplicate load_document ----
             if step.action == "load_document":

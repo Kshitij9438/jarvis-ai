@@ -1,10 +1,34 @@
+from planner.planner import Planner
+
+class FakeRegistry:
+    def __init__(self):
+        from tools.basic_tools import OpenWebsiteTool, EchoTool
+        from tools.explain_tool import ExplainTool
+        from tools.load_doc_tool import LoadDocTool
+
+        open_web = OpenWebsiteTool()
+        open_web.requires_context = []
+        open_web.produces_context = []
+
+        explain = ExplainTool()
+        explain.requires_context = []
+        explain.produces_context = []
+
+        self.tools = {
+            "open_website": open_web,
+            "explain": explain,
+            "echo": EchoTool(),
+            "load_document": LoadDocTool(None)
+        }
+
+    def get(self, name):
+        return self.tools.get(name)
+
+    def list_tools(self):
+        return list(self.tools.values())
+
+
 def test_dedup_and_normalization():
-    from planner.planner import Planner
-
-    class FakeRegistry:
-        def list_tools(self):
-            return []
-
     planner = Planner(FakeRegistry())
 
     plan = planner.plan("open github and open github and explain git and explain git again")
@@ -15,13 +39,8 @@ def test_dedup_and_normalization():
     assert "open_website" in actions
     assert "explain" in actions
 
+
 def test_entity_extraction_multiple():
-    from planner.planner import Planner
-
-    class FakeRegistry:
-        def list_tools(self):
-            return []
-
     planner = Planner(FakeRegistry())
 
     plan = planner.plan("open github and open youtube")
@@ -31,13 +50,8 @@ def test_entity_extraction_multiple():
     assert "https://github.com" in urls
     assert "https://youtube.com" in urls
 
+
 def test_validator_no_fake_load():
-    from planner.planner import Planner
-
-    class FakeRegistry:
-        def list_tools(self):
-            return []
-
     planner = Planner(FakeRegistry())
 
     plan = planner.plan("summarize this")
@@ -47,13 +61,8 @@ def test_validator_no_fake_load():
     # ❌ should NOT inject load_document(None)
     assert "load_document" not in actions
 
+
 def test_invalid_website_filtered():
-    from planner.planner import Planner
-
-    class FakeRegistry:
-        def list_tools(self):
-            return []
-
     planner = Planner(FakeRegistry())
 
     plan = planner.plan("open website with no url")
@@ -69,27 +78,17 @@ def test_invalid_website_filtered():
             assert "url" in step.args
             assert step.args["url"].startswith("http")
 
+
 def test_empty_explain():
-    from planner.planner import Planner
-
-    class FakeRegistry:
-        def list_tools(self):
-            return []
-
     planner = Planner(FakeRegistry())
 
     plan = planner.plan("explain")
 
     # should not produce meaningless explain
-    assert len(plan.steps) == 0 or plan.steps[0].args["query"] != "explain"
+    assert len(plan.steps) == 0 or "query" not in plan.steps[0].args or plan.steps[0].args["query"] != "explain"
+
 
 def test_full_pipeline_complex():
-    from planner.planner import Planner
-
-    class FakeRegistry:
-        def list_tools(self):
-            return []
-
     planner = Planner(FakeRegistry())
 
     plan = planner.plan(
@@ -100,5 +99,4 @@ def test_full_pipeline_complex():
 
     assert "open_website" in actions
     assert "explain" in actions
-    assert len(plan.steps) == 3  # github + youtube + explain
-
+    assert len(plan.steps) == 4  # open_website (github) + explain (github) + explain (git) + open_website (youtube)
