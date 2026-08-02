@@ -1,11 +1,16 @@
 """
 execution/context_dependency.py
 
-Strict context dependency resolver with correct context detection,
-safe injection, and deterministic ordering.
+Strict context dependency resolver with a shared context detection layer,
+safe dependency injection, and deterministic ordering.
 """
 
 from typing import List
+
+from execution.context_signals import (
+    is_document_loaded,
+    has_retrieved_content,
+)
 
 
 class ContextDependencyResolver:
@@ -41,10 +46,9 @@ class ContextDependencyResolver:
                             if injected and not self._exists(injected, resolved):
                                 print(f"[Resolver] Injecting {producer} for {ctx_type}")
 
-                                # 🔥 INSERT BEFORE dependent step
                                 resolved.append(injected)
 
-                                # mark as available AFTER injection
+                                # Context will exist after injected tool executes
                                 available.add(ctx_type)
 
             # =========================
@@ -59,24 +63,39 @@ class ContextDependencyResolver:
                 for produced in getattr(tool, "produces_context", []):
                     available.add(produced)
 
-        # =========================
-        # 🔥 FINAL ORDERING (CRITICAL)
-        # =========================
-        resolved = self._reorder(resolved)
-
-        return resolved
+        return self._reorder(resolved)
 
     # =========================
-    # 🧠 CONTEXT DETECTION (FIXED)
+    # 🧠 CONTEXT DETECTION
     # =========================
     def _get_available_context(self, context):
-        if not context:
+        """
+        Build the set of currently available context types.
+
+        Uses the shared context detection helpers so the resolver and
+        ControlLayer always agree on what constitutes usable context.
+        """
+        if context is None:
             return set()
 
         available = set()
 
-        for ctx_type, data in context._buckets.items():
-            if data:  # 🔥 ONLY if non-empty
+        # Document context
+        if is_document_loaded(context):
+            available.add("document")
+
+        # Web retrieval context (NOT merely "something wrote into web")
+        if has_retrieved_content(context):
+            available.add("web")
+
+        # Other context types continue using bucket presence.
+        buckets = getattr(context, "_buckets", {})
+
+        for ctx_type, data in buckets.items():
+            if ctx_type in {"document", "web"}:
+                continue
+
+            if data:
                 available.add(ctx_type)
 
         return available
@@ -98,14 +117,13 @@ class ContextDependencyResolver:
         return None
 
     # =========================
-    # 🧠 SAFE INJECTION (FIXED)
+    # 🧠 SAFE INJECTION
     # =========================
     def _inject(self, dependent_step, producer_name, ctx_type):
         args = getattr(dependent_step, "args", {})
 
         new_args = {}
 
-        # 🔥 CONTEXT-SPECIFIC ARG MAPPING
         if ctx_type == "web":
             new_args["query"] = args.get("query") or args.get("expression")
 
@@ -113,18 +131,25 @@ class ContextDependencyResolver:
             new_args["file_path"] = args.get("file_path")
 
         elif ctx_type == "calculation":
-            new_args["expression"] = args.get("expression") or args.get("query")
+            new_args["expression"] = (
+                args.get("expression") or args.get("query")
+            )
 
-        # safety: skip invalid injection
-        if not new_args:
+        if not any(v is not None for v in new_args.values()):
             return None
 
         step_class = dependent_step.__class__
 
         try:
-            return step_class(action=producer_name, args=new_args)
-        except:
-            return {"action": producer_name, "args": new_args}
+            return step_class(
+                action=producer_name,
+                args=new_args,
+            )
+        except Exception:
+            return {
+                "action": producer_name,
+                "args": new_args,
+            }
 
     # =========================
     # 🧠 DUPLICATE CHECK
@@ -137,7 +162,7 @@ class ContextDependencyResolver:
         return False
 
     # =========================
-    # 🔥 FINAL ORDERING (NEW)
+    # 🔥 FINAL ORDERING
     # =========================
     def _reorder(self, steps):
         priority = {
@@ -146,18 +171,26 @@ class ContextDependencyResolver:
             "web_retriever": 2,
             "rag_search": 3,
             "explain": 4,
-            "echo": 10
+            "echo": 10,
         }
 
         return sorted(
             steps,
-            key=lambda s: priority.get(getattr(s, "action", ""), 5)
+            key=lambda s: priority.get(
+                getattr(s, "action", ""),
+                5,
+            ),
         )
 
     # =========================
-    # 🎯 CONTEXT RANKING (READY)
+    # 🎯 CONTEXT RANKING
     # =========================
-    def rank_context(self, query: str, context_items: list, top_k: int = 3):
+    def rank_context(
+        self,
+        query: str,
+        context_items: list,
+        top_k: int = 3,
+    ):
         if not context_items:
             return []
 
@@ -167,7 +200,10 @@ class ContextDependencyResolver:
             score = self._simple_score(query, item)
             scored.append((item, score))
 
-        scored.sort(key=lambda x: x[1], reverse=True)
+        scored.sort(
+            key=lambda x: x[1],
+            reverse=True,
+        )
 
         return [item for item, _ in scored[:top_k]]
 
