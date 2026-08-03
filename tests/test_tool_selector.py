@@ -13,9 +13,9 @@ from planner.tool_selector import ToolSelector
 from tools.basic_tools import (
     OpenWebsiteTool,
     EchoTool,
-    CalculatorTool,
 )
 
+from tools.calculator_tool import CalculatorTool
 from tools.explain_tool import ExplainTool
 from tools.load_doc_tool import LoadDocTool
 
