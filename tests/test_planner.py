@@ -100,3 +100,59 @@ def test_full_pipeline_complex():
     assert "open_website" in actions
     assert "explain" in actions
     assert len(plan.steps) == 4  # open_website (github) + explain (github) + explain (git) + open_website (youtube)
+
+def test_trivial_input_returns_echo():
+    planner = Planner(FakeRegistry())
+
+    plan = planner.plan("hello")
+
+    assert len(plan.steps) == 1
+    assert plan.steps[0].action == "echo"
+
+def test_empty_input():
+    planner = Planner(FakeRegistry())
+
+    plan = planner.plan("")
+
+    assert len(plan.steps) == 1
+    assert plan.steps[0].action == "echo"
+
+def test_every_step_has_action():
+    planner = Planner(FakeRegistry())
+
+    plan = planner.plan("open github and explain git")
+
+    for step in plan.steps:
+        assert step.action
+        assert isinstance(step.args, dict)
+    
+def test_same_input_same_plan():
+    planner = Planner(FakeRegistry())
+
+    p1 = planner.plan("open github and explain git")
+    p2 = planner.plan("open github and explain git")
+
+    assert p1 == p2
+def test_duplicate_commands_removed():
+    planner = Planner(FakeRegistry())
+
+    plan = planner.plan(
+        "open github and open github and open github"
+    )
+
+    opens = [s for s in plan.steps if s.action == "open_website"]
+
+    assert len(opens) == 1
+def test_segment_order_preserved():
+    planner = Planner(FakeRegistry())
+
+    plan = planner.plan(
+        "open github then explain git"
+    )
+
+    actions = [s.action for s in plan.steps]
+
+    assert actions == [
+        "open_website",
+        "explain",
+    ]

@@ -149,6 +149,10 @@ class TaskOptimizer:
     # =========================
     # 🚫 FILTER INVALID TASKS
     # =========================
+    # TODO(Stage B):
+# This length check removes normalized abbreviations like
+# "ai", "ml", and "dl". Revisit whether validity should be
+# based on semantic content rather than raw string length.
     def _filter_invalid(self, tasks: list[Task]) -> list[Task]:
         valid = []
 
