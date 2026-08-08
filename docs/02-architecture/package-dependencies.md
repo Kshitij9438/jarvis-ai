@@ -1,0 +1,16 @@
+config
+    │
+    ▼
+brain
+    │
+    ▼
+planner
+    │
+    ▼
+control
+    │
+    ▼
+executor
+    │
+    ▼
+tools
