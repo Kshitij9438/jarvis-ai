@@ -1,4 +1,4 @@
-from planner.schema import Plan, Action
+from planner.schema import Plan
 import copy
 
 

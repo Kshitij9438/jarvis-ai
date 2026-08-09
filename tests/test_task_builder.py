@@ -116,7 +116,7 @@ def test_explain_uses_arg_extractor_when_no_entity():
 def test_web_retriever_uses_clean_query():
     builder = make_builder()
 
-    tool = WebRetrieverTool()
+    tool = WebRetrieverTool(llm=Mock())
 
     tasks = builder.build_tasks(
         "what is reinforcement learning",
@@ -221,7 +221,7 @@ def test_rag_summary(mock_exists):
 
     builder = make_builder()
 
-    tool = RAGTool()
+    tool = RAGTool(rag=Mock())
 
     tasks = builder.build_tasks(
         "summarize report.pdf",
@@ -240,7 +240,7 @@ def test_rag_without_document_skipped(mock_exists):
 
     builder = make_builder()
 
-    tool = RAGTool()
+    tool = RAGTool(rag = Mock())
 
     tasks = builder.build_tasks(
         "summarize report",

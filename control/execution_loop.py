@@ -22,7 +22,7 @@ of corrected — that's expected at this stage, not a bug.
 from copy import deepcopy
 from typing import List, Optional
 
-from planner.schema import Plan, Action
+from planner.schema import Plan
 from control.evaluator import Evaluator, EvaluationResult
 
 

@@ -63,7 +63,7 @@ class ContextDependencyResolver:
                 for produced in getattr(tool, "produces_context", []):
                     available.add(produced)
 
-        return self._reorder(resolved)
+        return resolved
 
     # =========================
     # 🧠 CONTEXT DETECTION
@@ -161,55 +161,3 @@ class ContextDependencyResolver:
                     return True
         return False
 
-    # =========================
-    # 🔥 FINAL ORDERING
-    # =========================
-    def _reorder(self, steps):
-        priority = {
-            "load_document": 1,
-            "calculator": 1,
-            "web_retriever": 2,
-            "rag_search": 3,
-            "explain": 4,
-            "echo": 10,
-        }
-
-        return sorted(
-            steps,
-            key=lambda s: priority.get(
-                getattr(s, "action", ""),
-                5,
-            ),
-        )
-
-    # =========================
-    # 🎯 CONTEXT RANKING
-    # =========================
-    def rank_context(
-        self,
-        query: str,
-        context_items: list,
-        top_k: int = 3,
-    ):
-        if not context_items:
-            return []
-
-        scored = []
-
-        for item in context_items:
-            score = self._simple_score(query, item)
-            scored.append((item, score))
-
-        scored.sort(
-            key=lambda x: x[1],
-            reverse=True,
-        )
-
-        return [item for item, _ in scored[:top_k]]
-
-    def _simple_score(self, query: str, text: str):
-        q_words = set(query.lower().split())
-        t_words = set(text.lower().split())
-
-        overlap = len(q_words & t_words)
-        return overlap / (len(q_words) + 1)

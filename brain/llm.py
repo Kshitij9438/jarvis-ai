@@ -183,53 +183,6 @@ User request:
 
         return None
 
-    # =========================
-    # 🤖 PLANNER (⚠️ CURRENTLY UNUSED / DEAD CODE)
-    # =========================
-    def generate_plan(self, user_input: str, schema: Type[BaseModel], tool_info: str):
-        """
-        ⚠️ As of this writing, nothing in the codebase calls this method.
-        Planner builds its plan deterministically via TaskBuilder /
-        ToolSelector, and only reaches the LLM through generate_text
-        (via ArgExtractor) — not through this method.
-
-        Kept here because it may still be the intended entry point for
-        a future LLM-driven planning path, and because generate_structured
-        is now schema-generic (see above), this method's system_prompt
-        will actually reach the model correctly if it's ever wired up —
-        that wasn't true before this change. If you don't have near-term
-        plans to use this, it's safe to delete.
-        """
-        system_prompt = f"""
-You are an AI planner.
-
-Break the user request into steps.
-
-Available tools:
-{tool_info}
-
-CRITICAL RULES:
-- You MUST cover ALL parts of the user request
-- If user asks multiple things → create multiple steps
-- DO NOT skip any intent
-- Each step must correspond to a user request
-- Use rag_search for:
-  - explain
-  - summarize
-
-STRICT:
-- Output ONLY JSON
-- No markdown
-- Each step must be atomic
-
-Think carefully before answering.
-"""
-
-        return self.generate_structured(
-            prompt=user_input,
-            schema=schema,
-            system_prompt=system_prompt
-        )
 
     # =========================
     # 🔁 REFLECTION

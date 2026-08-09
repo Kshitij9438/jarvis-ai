@@ -96,6 +96,11 @@ class TaskBuilder:
             elif tool.name == "open_website":
                 if not url:
                     continue
+            elif tool.name == "load_document":
+                if not file_path:
+                    continue
+
+                query = file_path
 
             # =========================
             # 🔁 FINAL FALLBACK (SAFE)
