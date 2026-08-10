@@ -26,10 +26,20 @@ from planner.schema import Plan
 from control.evaluator import Evaluator, EvaluationResult
 
 
+
 class ExecutionLoop:
-    def __init__(self, executor):
+    def __init__(self, executor, event_callback=None):
         self.executor = executor
         self.evaluator = Evaluator()
+        self.event_callback = event_callback
+        
+    def _emit(self, event_type:str, data=None):
+        if self.event_callback is None:
+            return
+        self.event_callback(
+            event_type,
+            data or {},
+        )
 
     # ------------------------------------------------------------------
     # PUBLIC API
@@ -43,6 +53,12 @@ class ExecutionLoop:
         Returns the results list from whichever attempt is returned —
         always the dict-shaped results coming out of Executor.execute.
         """
+        self._emit(
+            "execution started",
+            {
+                "steps": len(plan.steps) if plan else 0,
+            }
+        )
         if plan is None or not getattr(plan, "steps", None):
             print("[ExecutionLoop] Empty/None plan — nothing to execute.")
             return []
@@ -54,7 +70,23 @@ class ExecutionLoop:
         for attempt in range(1, max_attempts + 1):
             print(f"\n🚀 Attempt {attempt}/{max_attempts}")
 
+            self._emit(
+                "attempt started",
+                {
+                    "attempt": attempt,
+                    "max_attempts": max_attempts,
+                    "steps": len(current_plan.steps) if current_plan else 0,
+                }
+            )
+
             results = self.executor.execute(current_plan, context)
+            self._emit(
+                "attempt.executed",
+                {
+                    "attempt": attempt,
+                    "results": results,
+                }
+            )
             last_results = results
 
             eval_result = self.evaluator.evaluate(
@@ -62,13 +94,29 @@ class ExecutionLoop:
                 current_plan,
                 results
             )
+            self._emit(
+                "evaluation completed",
+                {
+                    "attempt": attempt,
+                    "success": eval_result.success,
+                    "confidence": eval_result.confidence,
+                }
+            )
             last_eval = eval_result
 
             print("🧠 Evaluation:", eval_result)
 
             # ---- STRONG SUCCESS → stop ----
             if eval_result.success and eval_result.confidence >= 0.75:
+                self._emit(
+                    "execution.completed",
+                    {
+                        "success": True,
+                        "attempt": attempt,
+                    },
+                )
                 return results
+            
 
             # ---- PARTIAL SUCCESS → accept, stop ----
             if eval_result.confidence >= 0.6:
@@ -81,6 +129,14 @@ class ExecutionLoop:
 
             # ---- Weak result and attempts remain → attempt repair ----
             repaired_plan = self._repair_plan(current_plan, results)
+            self._emit(
+                "repair.applied",
+                {
+                    "attempt": attempt,
+                    "old_steps": len(current_plan.steps) if current_plan else 0,
+                    "new_steps": len(repaired_plan.steps) if repaired_plan else 0,
+                }
+            )
 
             if repaired_plan is None:
                 print("⚠️ Nothing to repair (no failed steps identifiable) — stopping")
@@ -100,6 +156,13 @@ class ExecutionLoop:
         print("⚠️ Max attempts reached — returning last results")
         if last_eval is not None:
             print(f"   final evaluation: {last_eval}")
+            self._emit(
+                "execution.completed",
+                {
+                    "success": False,
+                    "attempt": max_attempts,
+                },
+            )
         return last_results
 
     # ------------------------------------------------------------------

@@ -8,6 +8,7 @@ dependencies = [
     "beautifulsoup4>=4.14.3",
     "ddgs>=9.14.1",
     "duckduckgo-search>=8.1.1",
+    "fastapi>=0.141.1",
     "numpy>=2.4.3",
     "ollama>=0.6.1",
     "pydantic>=2.12.5",
@@ -17,6 +18,7 @@ dependencies = [
     "requests>=2.33.1",
     "rich>=14.3.3",
     "sentence-transformers>=5.3.0",
+    "uvicorn>=0.52.1",
     "wikipedia>=1.4.0",
 ]
 [tool.setuptools.packages.find]
