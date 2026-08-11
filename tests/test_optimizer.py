@@ -16,12 +16,10 @@ def make_optimizer():
 # Query normalization
 # ==========================================================
 
-def test_synonym_normalization():
+def test_synonym_normalization_preserves_canonical_short_form():
     """
-    The optimizer normalizes 'artificial intelligence' to 'ai',
-    but the current validation rule removes explain/rag queries
-    shorter than three characters. This test documents the
-    current behaviour.
+    Synonym normalization must preserve recognized canonical
+    short forms such as 'ai' instead of filtering them out.
     """
     optimizer = make_optimizer()
 
@@ -36,7 +34,8 @@ def test_synonym_normalization():
 
     optimized = optimizer.optimize(tasks)
 
-    assert optimized == []
+    assert len(optimized) == 1
+    assert optimized[0].query == "ai"
 
 
 def test_learning_pattern_normalization():
@@ -213,5 +212,32 @@ def test_loader_recovered_for_rag():
 
 def test_empty_input():
     optimizer = make_optimizer()
-
     assert optimizer.optimize([]) == []
+
+def test_invalid_short_query_removed():
+    optimizer = make_optimizer()
+
+    tasks = [
+        Task(
+            type="explain",
+            target=None,
+            file_path=None,
+            query="of",
+        )
+    ]
+
+    optimized = optimizer.optimize(tasks)
+
+    assert optimized == []
+
+def test_all_canonical_short_forms_are_valid():
+    optimizer = make_optimizer()
+
+    tasks = [
+        Task("explain", None, None, "machine learning"),
+        Task("explain", None, None, "deep learning"),
+    ]
+
+    optimized = optimizer.optimize(tasks)
+
+    assert [task.query for task in optimized] == ["ml", "dl"]

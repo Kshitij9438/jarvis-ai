@@ -10,6 +10,7 @@ class TaskOptimizer:
             "machine learning": "ml",
             "deep learning": "dl",
         }
+        self.short_form_queries = set(self.synonyms.values())
 
         # 🔥 learning patterns → canonical form
         self.learning_patterns = [
@@ -149,10 +150,6 @@ class TaskOptimizer:
     # =========================
     # 🚫 FILTER INVALID TASKS
     # =========================
-    # TODO(Stage B):
-# This length check removes normalized abbreviations like
-# "ai", "ml", and "dl". Revisit whether validity should be
-# based on semantic content rather than raw string length.
     def _filter_invalid(self, tasks: list[Task]) -> list[Task]:
         valid = []
 
@@ -165,11 +162,25 @@ class TaskOptimizer:
                 if task.file_path:
                     valid.append(task)
 
-            elif task.type in ["rag_search", "explain"]:  # ✅ FIXED
-                if task.query and len(task.query.strip()) > 2:
+            elif task.type in ["rag_search", "explain"]:
+                if self._is_valid_query(task.query):
                     valid.append(task)
 
             else:
                 valid.append(task)
 
         return valid
+
+    def _is_valid_query(self, query: str | None) -> bool:
+        if not query:
+            return False
+
+        query = query.strip()
+
+        if not query:
+            return False
+
+        if len(query) > 2:
+            return True
+
+        return query in self.short_form_queries
