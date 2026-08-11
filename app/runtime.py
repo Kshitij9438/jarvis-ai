@@ -19,6 +19,7 @@ from execution.context import ExecutionContext
 from control.execution_loop import ExecutionLoop
 from app.events import JarvisEvent
 
+
 class JarvisRuntime:
     """
     Reusable JARVIS application runtime.
@@ -59,7 +60,7 @@ class JarvisRuntime:
         self.executor = Executor(self.registry)
         self.execution_loop = ExecutionLoop(self.executor)
 
-    def run(self, user_input: str):
+    def run(self, user_input: str, event_callback=None):
         """
         Execute one complete JARVIS request.
 
@@ -111,49 +112,54 @@ class JarvisRuntime:
         # =========================
         # EXECUTE
         # =========================
-        results = self.execution_loop.run(plan, context)
+        results = self.execution_loop.run(
+            plan,
+            context,
+            event_callback=event_callback,
+        )
 
         return {
             "plan": plan,
             "results": results,
             "context": context,
         }
+
     def run_with_events(self, user_input: str):
         """
         Execute one complete JARVIS request with events.
 
         Returns the structured execution results produced by
-        ExecutionLoop.
+        ExecutionLoop together with events generated during this request.
         """
         events = []
-        def emit(event_type,data=None):
+
+        def emit(event_type, data=None):
             events.append(
                 JarvisEvent(
                     type=event_type,
                     data=data or {},
                 )
             )
-        original_callback = self.execution_loop.event_callback
-        self.execution_loop.event_callback = emit
-        
-        try:
-            events.append(
-                JarvisEvent(
-                    type="request started",
-                    data = {"message": user_input},
-                )
+
+        events.append(
+            JarvisEvent(
+                type="request started",
+                data={"message": user_input},
             )
-            response = self.run(user_input)
-            
-            events.append(
-                JarvisEvent(
-                    type="request.completed",
-                    data = {
-                        "success": bool(response["results"])
-                        },
-                )
+        )
+
+        response = self.run(
+            user_input,
+            event_callback=emit,
+        )
+
+        events.append(
+            JarvisEvent(
+                type="request.completed",
+                data={
+                    "success": bool(response["results"]),
+                },
             )
-            return response, events
-        finally:
-            self.execution_loop.event_callback = original_callback        
-            
+        )
+
+        return response, events

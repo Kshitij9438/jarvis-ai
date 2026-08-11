@@ -5,10 +5,11 @@ Drives execute → evaluate → (repair → execute)* until the goal is
 satisfied, a confidence threshold is hit, or attempts run out.
 
 Repair strategy (current): SUBTRACTIVE ONLY.
-  - Drops steps whose execution failed.
-  - Keeps steps that succeeded (so we never re-run side effects like
-    open_website or re-do a load_document that already worked).
-  - Never invents new steps, never calls the LLM, never re-plans.
+
+- Drops steps whose execution failed.
+- Keeps steps that succeeded (so we never re-run side effects like
+  open_website or re-do a load_document that already worked).
+- Never invents new steps, never calls the LLM, never re-plans.
 
 This means repair can only ever shrink a plan. It cannot fix a bad
 query or recover a step that failed for a correctable reason — it
@@ -32,11 +33,18 @@ class ExecutionLoop:
         self.executor = executor
         self.evaluator = Evaluator()
         self.event_callback = event_callback
-        
-    def _emit(self, event_type:str, data=None):
-        if self.event_callback is None:
+
+    def _emit(self, event_type: str, data=None, event_callback=None):
+        callback = (
+            event_callback
+            if event_callback is not None
+            else self.event_callback
+        )
+
+        if callback is None:
             return
-        self.event_callback(
+
+        callback(
             event_type,
             data or {},
         )
@@ -45,7 +53,13 @@ class ExecutionLoop:
     # PUBLIC API
     # ------------------------------------------------------------------
 
-    def run(self, plan: Plan, context, max_attempts: int = 2) -> List[dict]:
+    def run(
+        self,
+        plan: Plan,
+        context,
+        max_attempts: int = 2,
+        event_callback=None,
+    ) -> List[dict]:
         """
         Execute `plan`, evaluate the outcome, and retry with a
         subtractively-repaired plan if the result is weak.
@@ -57,7 +71,8 @@ class ExecutionLoop:
             "execution started",
             {
                 "steps": len(plan.steps) if plan else 0,
-            }
+            },
+            event_callback=event_callback,
         )
         if plan is None or not getattr(plan, "steps", None):
             print("[ExecutionLoop] Empty/None plan — nothing to execute.")
@@ -76,7 +91,8 @@ class ExecutionLoop:
                     "attempt": attempt,
                     "max_attempts": max_attempts,
                     "steps": len(current_plan.steps) if current_plan else 0,
-                }
+                },
+                event_callback=event_callback,
             )
 
             results = self.executor.execute(current_plan, context)
@@ -85,7 +101,8 @@ class ExecutionLoop:
                 {
                     "attempt": attempt,
                     "results": results,
-                }
+                },
+                event_callback=event_callback,
             )
             last_results = results
 
@@ -100,7 +117,8 @@ class ExecutionLoop:
                     "attempt": attempt,
                     "success": eval_result.success,
                     "confidence": eval_result.confidence,
-                }
+                },
+                event_callback=event_callback,
             )
             last_eval = eval_result
 
@@ -114,9 +132,10 @@ class ExecutionLoop:
                         "success": True,
                         "attempt": attempt,
                     },
+                    event_callback=event_callback,
                 )
                 return results
-            
+
 
             # ---- PARTIAL SUCCESS → accept, stop ----
             if eval_result.confidence >= 0.6:
@@ -135,7 +154,8 @@ class ExecutionLoop:
                     "attempt": attempt,
                     "old_steps": len(current_plan.steps) if current_plan else 0,
                     "new_steps": len(repaired_plan.steps) if repaired_plan else 0,
-                }
+                },
+                event_callback=event_callback,
             )
 
             if repaired_plan is None:
@@ -162,6 +182,7 @@ class ExecutionLoop:
                     "success": False,
                     "attempt": max_attempts,
                 },
+                event_callback=event_callback,
             )
         return last_results
 
