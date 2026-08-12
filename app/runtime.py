@@ -1,3 +1,5 @@
+from uuid import UUID
+
 from planner.planner import Planner
 from executor.executor import Executor
 from tools.registry import ToolRegistry
@@ -17,7 +19,11 @@ from rag.ingestor import Ingestor
 
 from execution.context import ExecutionContext
 from control.execution_loop import ExecutionLoop
+
 from app.events import JarvisEvent
+
+from conversation.context import ConversationEntry
+from conversation.manager import ConversationManager
 
 
 class JarvisRuntime:
@@ -27,6 +33,9 @@ class JarvisRuntime:
     Owns the construction and wiring of the core JARVIS system,
     while keeping clients such as the CLI and GUI independent
     from the internal planner/executor architecture.
+
+    Conversation state is owned by ConversationManager.
+    Request-scoped execution state remains owned by ExecutionContext.
     """
 
     def __init__(self):
@@ -60,22 +69,59 @@ class JarvisRuntime:
         self.executor = Executor(self.registry)
         self.execution_loop = ExecutionLoop(self.executor)
 
-    def run(self, user_input: str, event_callback=None):
+        # =========================
+        # CONVERSATION STATE
+        # =========================
+        self.conversation_manager = ConversationManager()
+
+    # =========================
+    # PUBLIC REQUEST API
+    # =========================
+
+    def run(
+        self,
+        user_input: str,
+        conversation_id: UUID | None = None,
+        event_callback=None,
+    ):
         """
         Execute one complete JARVIS request.
 
-        Returns the structured execution results produced by
-        ExecutionLoop.
+        `conversation_id` identifies the persistent conversation
+        associated with this request.
+
+        If no conversation_id is supplied, a new conversation is created.
+
+        ExecutionContext remains request-scoped while ConversationContext
+        persists across multiple requests belonging to the same conversation.
         """
         user_input = user_input.strip()
 
+        # =========================
+        # EMPTY INPUT
+        # =========================
         if not user_input:
             return {
+                "conversation_id": conversation_id,
                 "plan": None,
                 "results": [],
                 "context": None,
             }
 
+        # =========================
+        # CONVERSATION STATE
+        # =========================
+        conversation = (
+            self.conversation_manager.get_or_create_conversation(
+                conversation_id
+            )
+        )
+
+        conversation_id = conversation.conversation_id
+
+        # =========================
+        # REQUEST-SCOPED EXECUTION
+        # =========================
         context = ExecutionContext(user_input)
 
         # =========================
@@ -84,7 +130,14 @@ class JarvisRuntime:
         plan = self.planner.plan(user_input, context)
 
         if plan is None or not plan.steps:
+            self._record_conversation_entry(
+                conversation_id=conversation_id,
+                user_input=user_input,
+                assistant_response=None,
+            )
+
             return {
+                "conversation_id": conversation_id,
                 "plan": None,
                 "results": [],
                 "context": context,
@@ -103,7 +156,14 @@ class JarvisRuntime:
         ]
 
         if not plan.steps:
+            self._record_conversation_entry(
+                conversation_id=conversation_id,
+                user_input=user_input,
+                assistant_response=None,
+            )
+
             return {
+                "conversation_id": conversation_id,
                 "plan": plan,
                 "results": [],
                 "context": context,
@@ -118,18 +178,62 @@ class JarvisRuntime:
             event_callback=event_callback,
         )
 
+        # =========================
+        # UPDATE CONVERSATION STATE
+        # =========================
+        self._record_conversation_entry(
+            conversation_id=conversation_id,
+            user_input=user_input,
+            assistant_response=str(results) if results else None,
+        )
+
         return {
+            "conversation_id": conversation_id,
             "plan": plan,
             "results": results,
             "context": context,
         }
 
-    def run_with_events(self, user_input: str):
+    # =========================
+    # CONVERSATION RECORDING
+    # =========================
+
+    def _record_conversation_entry(
+        self,
+        conversation_id: UUID,
+        user_input: str,
+        assistant_response: str | None,
+    ) -> None:
+        """
+        Record one completed request in the persistent conversation.
+
+        Intent and confidence are intentionally left unset for now.
+        They belong to the later understanding/decision stages.
+        """
+        entry = ConversationEntry(
+            user_input=user_input,
+            assistant_response=assistant_response,
+        )
+
+        self.conversation_manager.add_conversation_entry(
+            conversation_id,
+            entry,
+        )
+
+    # =========================
+    # EVENT API
+    # =========================
+
+    def run_with_events(
+        self,
+        user_input: str,
+        conversation_id: UUID | None = None,
+    ):
         """
         Execute one complete JARVIS request with events.
 
-        Returns the structured execution results produced by
-        ExecutionLoop together with events generated during this request.
+        Returns the structured execution response together with
+        events generated during this request.
         """
         events = []
 
@@ -144,12 +248,16 @@ class JarvisRuntime:
         events.append(
             JarvisEvent(
                 type="request started",
-                data={"message": user_input},
+                data={
+                    "message": user_input,
+                    "conversation_id": conversation_id,
+                },
             )
         )
 
         response = self.run(
             user_input,
+            conversation_id=conversation_id,
             event_callback=emit,
         )
 
@@ -158,6 +266,7 @@ class JarvisRuntime:
                 type="request.completed",
                 data={
                     "success": bool(response["results"]),
+                    "conversation_id": response["conversation_id"],
                 },
             )
         )
