@@ -2,6 +2,12 @@
 from conversation.manager import ConversationManager
 
 from conversation.context import ConversationEntry
+from conversation.context import (
+    ConversationContext,
+    IntentModel,
+    PendingRequest,
+)
+from conversation.manager import ConversationManager
 
 from app.runtime import JarvisRuntime
 
@@ -111,3 +117,94 @@ def test_runtime_persists_conversation_across_requests():
         conversation.conversation_history[1].user_input
         == "second message"
     )
+
+
+
+def test_pending_request_persists_and_updates():
+    manager = ConversationManager()
+
+    conversation = manager.create_conversation()
+    conversation_id = conversation.conversation_id
+
+    assert conversation.pending_request is None
+
+    conversation.pending_request = PendingRequest(
+        intent=IntentModel(
+            name="explain",
+            description="Explain a concept",
+        ),
+        missing_information=["topic"],
+        clarification_answer=None,
+    )
+
+    stored = manager.get_conversation(conversation_id)
+
+    assert stored is conversation
+    assert stored.pending_request is not None
+    assert stored.pending_request.intent.name == "explain"
+    assert stored.pending_request.missing_information == ["topic"]
+    assert stored.pending_request.clarification_answer is None
+
+    stored.pending_request.clarification_answer = "Quantum Physics"
+
+    retrieved = manager.get_conversation(conversation_id)
+
+    assert retrieved is conversation
+    assert retrieved.pending_request is not None
+    assert retrieved.pending_request == PendingRequest(
+        intent=IntentModel(
+            name="explain",
+            description="Explain a concept",
+        ),
+        missing_information=["topic"],
+        clarification_answer="Quantum Physics",
+    )
+
+def test_pending_request_persists_across_conversation_lookup():
+    manager = ConversationManager()
+
+    context = manager.create_conversation()
+    conversation_id = context.conversation_id
+
+    pending_request = PendingRequest(
+        intent=IntentModel(
+            name="explain",
+            description="Explain a concept",
+        ),
+        missing_information=["topic"],
+    )
+
+    context.pending_request = pending_request
+
+    retrieved = manager.get_conversation(conversation_id)
+
+    assert retrieved is context
+    assert retrieved.pending_request is not None
+    assert retrieved.pending_request.intent.name == "explain"
+    assert retrieved.pending_request.missing_information == ["topic"]
+    assert retrieved.pending_request.clarification_answer is None
+
+def test_pending_request_is_isolated_between_conversations():
+    manager = ConversationManager()
+
+    conversation_a = manager.create_conversation()
+    conversation_b = manager.create_conversation()
+
+    conversation_a.pending_request = PendingRequest(
+        intent=IntentModel(
+            name="explain",
+            description="Explain a concept",
+        ),
+        missing_information=["topic"],
+    )
+
+    assert conversation_a.pending_request is not None
+    assert conversation_b.pending_request is None
+
+    conversation_a.pending_request.clarification_answer = "Transformers"
+
+    assert (
+        conversation_a.pending_request.clarification_answer
+        == "Transformers"
+    )
+    assert conversation_b.pending_request is None
