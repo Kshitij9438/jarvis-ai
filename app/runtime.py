@@ -24,6 +24,8 @@ from app.events import JarvisEvent
 
 from conversation.context import ConversationEntry
 from conversation.manager import ConversationManager
+from control.decision_layer import decision_type_from_user_input
+
 
 
 class JarvisRuntime:
@@ -44,6 +46,7 @@ class JarvisRuntime:
         # =========================
         embedder = Embedder()
         store = VectorStore()
+
 
         ingestor = Ingestor(embedder, store)
         retriever = Retriever(embedder, store)
@@ -125,6 +128,54 @@ class JarvisRuntime:
         context = ExecutionContext(user_input)
 
         # =========================
+        # DECISION LAYER
+        # =========================
+        decision = decision_type_from_user_input(user_input)
+        if decision.type == "clarify":
+            self._record_conversation_entry(
+                conversation_id=conversation_id,
+                user_input=user_input,
+                assistant_response="Request requires clarification.",
+            )
+
+            return {
+                "conversation_id": conversation_id,
+                "plan": None,
+                "results": [],
+                "context": context,
+                "decision": decision,
+            }
+        if decision.type == "reject":
+            self._record_conversation_entry(
+                conversation_id=conversation_id,
+                user_input=user_input,
+                assistant_response="Request rejected.",
+            )
+
+            return {
+                "conversation_id": conversation_id,
+                "plan": None,
+                "results": [],
+                "context": context,
+                "decision": decision,
+            }
+        if decision.type == "respond":
+            self._record_conversation_entry(
+                conversation_id=conversation_id,
+                user_input=user_input,
+                assistant_response="Request responded to without execution.",
+            )
+
+            return {
+                "conversation_id": conversation_id,
+                "plan": None,
+                "results": [],
+                "context": context,
+                "decision": decision,
+            }
+        # EXECUTE → proceed to planning and execution
+
+        # =========================
         # PLAN
         # =========================
         plan = self.planner.plan(user_input, context)
@@ -141,6 +192,7 @@ class JarvisRuntime:
                 "plan": None,
                 "results": [],
                 "context": context,
+                "decision": decision,
             }
 
         # =========================
@@ -167,6 +219,7 @@ class JarvisRuntime:
                 "plan": plan,
                 "results": [],
                 "context": context,
+                "decision": decision,
             }
 
         # =========================
@@ -192,6 +245,7 @@ class JarvisRuntime:
             "plan": plan,
             "results": results,
             "context": context,
+            "decision": decision,
         }
 
     # =========================
