@@ -22,10 +22,15 @@ from control.execution_loop import ExecutionLoop
 
 from app.events import JarvisEvent
 
-from conversation.context import ConversationEntry
+from conversation.context import (
+    ConversationEntry,
+    IntentModel,
+    PendingClarification,
+    PendingRequest,
+)
 from conversation.manager import ConversationManager
 from control.decision_layer import decision_type_from_user_input
-
+from control.clarification import clarify_question
 
 
 class JarvisRuntime:
@@ -46,7 +51,6 @@ class JarvisRuntime:
         # =========================
         embedder = Embedder()
         store = VectorStore()
-
 
         ingestor = Ingestor(embedder, store)
         retriever = Retriever(embedder, store)
@@ -131,20 +135,46 @@ class JarvisRuntime:
         # DECISION LAYER
         # =========================
         decision = decision_type_from_user_input(user_input)
+
         if decision.type == "clarify":
+            clarification = clarify_question(
+                self.planner.llm,
+                user_input,
+            )
+
+            conversation.pending_clarification = PendingClarification(
+                clarification_question=clarification.question
+            )
+
+            conversation.pending_request = PendingRequest(
+                intent=self.planner.llm.generate_structured(
+                    prompt=user_input,
+                    schema=IntentModel,
+                    system_prompt=(
+                        "You are an assistant that receives a user query. "
+                        "Extract the intent of the query and return it as a "
+                        "structured JSON object. Do not provide any additional "
+                        "context or explanation."
+                    ),
+                ),
+                missing_information=["topic"],
+                clarification_answer=None,
+            )
+
             self._record_conversation_entry(
                 conversation_id=conversation_id,
                 user_input=user_input,
-                assistant_response="Request requires clarification.",
+                assistant_response=clarification.question,
             )
 
             return {
                 "conversation_id": conversation_id,
                 "plan": None,
-                "results": [],
+                "results": [clarification],
                 "context": context,
                 "decision": decision,
             }
+
         if decision.type == "reject":
             self._record_conversation_entry(
                 conversation_id=conversation_id,
@@ -159,6 +189,7 @@ class JarvisRuntime:
                 "context": context,
                 "decision": decision,
             }
+
         if decision.type == "respond":
             self._record_conversation_entry(
                 conversation_id=conversation_id,
@@ -173,7 +204,8 @@ class JarvisRuntime:
                 "context": context,
                 "decision": decision,
             }
-        # EXECUTE → proceed to planning and execution
+
+        # EXECUTE -> proceed to planning and execution
 
         # =========================
         # PLAN

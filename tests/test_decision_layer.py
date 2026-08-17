@@ -14,7 +14,10 @@ def test_explain_something_clarifies_without_execution():
 
     assert response["decision"].type == DecisionType.CLARIFY
     assert response["plan"] is None
-    assert response["results"] == []
+
+    # Clarification response exists
+    assert len(response["results"]) == 1
+    assert response["results"][0].question
 
 
 def test_hi_returns_respond_without_execution():
