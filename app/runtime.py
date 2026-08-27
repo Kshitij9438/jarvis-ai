@@ -1,6 +1,9 @@
 from uuid import UUID
 
 from planner.planner import Planner
+from planner.entity_extractor import EntityExtractor
+from planner.decision import DecisionType, PlannerDecision
+
 from executor.executor import Executor
 from tools.registry import ToolRegistry
 
@@ -19,18 +22,24 @@ from rag.ingestor import Ingestor
 
 from execution.context import ExecutionContext
 from control.execution_loop import ExecutionLoop
+from control.decision_layer import decision_type_from_user_input
+from control.clarification import clarify_question
 
 from app.events import JarvisEvent
 
 from conversation.context import (
+    ActiveTopic,
     ConversationEntry,
     IntentModel,
     PendingClarification,
     PendingRequest,
 )
 from conversation.manager import ConversationManager
-from control.decision_layer import decision_type_from_user_input
-from control.clarification import clarify_question
+from conversation.reference_detector import extract_reference
+from conversation.reference_resolver import (
+    ReferenceResolutionDecision,
+    ReferenceResolver,
+)
 
 
 class JarvisRuntime:
@@ -43,6 +52,10 @@ class JarvisRuntime:
 
     Conversation state is owned by ConversationManager.
     Request-scoped execution state remains owned by ExecutionContext.
+
+    EntityExtractor extracts explicit topics/entities from the current
+    request. ReferenceResolver resolves conversational references against
+    persistent conversation state.
     """
 
     def __init__(self):
@@ -81,6 +94,11 @@ class JarvisRuntime:
         # =========================
         self.conversation_manager = ConversationManager()
 
+        # =========================
+        # ENTITY EXTRACTION
+        # =========================
+        self.entity_extractor = EntityExtractor()
+
     # =========================
     # PUBLIC REQUEST API
     # =========================
@@ -103,6 +121,7 @@ class JarvisRuntime:
         persists across multiple requests belonging to the same conversation.
         """
         user_input = user_input.strip()
+        original_user_input = user_input
 
         # =========================
         # EMPTY INPUT
@@ -130,6 +149,101 @@ class JarvisRuntime:
         # REQUEST-SCOPED EXECUTION
         # =========================
         context = ExecutionContext(user_input)
+
+        # =========================
+        # M5: REFERENCE RESOLUTION
+        # =========================
+        reference = extract_reference(user_input)
+
+        if reference:
+            reference_resolver = ReferenceResolver(conversation)
+
+            resolved_entity, resolution = (
+                reference_resolver.resolve_reference(reference)
+            )
+
+            # ---------------------------------
+            # AMBIGUOUS / UNRESOLVED
+            # ---------------------------------
+            if resolution in {
+                ReferenceResolutionDecision.AMBIGUOUS,
+                ReferenceResolutionDecision.UNRESOLVED,
+            }:
+                clarification = clarify_question(
+                    self.planner.llm,
+                    user_input,
+                )
+
+                conversation.pending_clarification = PendingClarification(
+                    clarification_question=clarification.question
+                )
+
+                conversation.pending_request = PendingRequest(
+                    intent=self.planner.llm.generate_structured(
+                        prompt=user_input,
+                        schema=IntentModel,
+                        system_prompt=(
+                            "You are an assistant that receives a user query. "
+                            "Extract the intent of the query and return it as a "
+                            "structured JSON object. Do not provide any additional "
+                            "context or explanation."
+                        ),
+                    ),
+                    missing_information=["reference"],
+                    clarification_answer=None,
+                )
+
+                self._record_conversation_entry(
+                    conversation_id=conversation_id,
+                    user_input=original_user_input,
+                    assistant_response=clarification.question,
+                )
+
+                # Reference ambiguity/unresolvability is already a
+                # request-understanding decision. Do not ask the
+                # Decision Layer to reinterpret the same request.
+                return {
+                    "conversation_id": conversation_id,
+                    "plan": None,
+                    "results": [clarification],
+                    "context": context,
+                    "decision": PlannerDecision(
+                        type=DecisionType.CLARIFY
+                    ),
+                }
+
+            # ---------------------------------
+            # RESOLVED
+            # ---------------------------------
+            if (
+                resolution == ReferenceResolutionDecision.RESOLVED
+                and resolved_entity is not None
+            ):
+                user_input = user_input.replace(
+                    reference,
+                    resolved_entity,
+                )
+
+                reference_resolver.update_context_with_resolution(
+                    reference,
+                    resolved_entity,
+                    resolution,
+                )
+
+        # =========================
+        # ENTITY EXTRACTION
+        # =========================
+        # Do not overwrite existing conversational topics when this
+        # request is a reference-based follow-up.
+        if reference is None:
+            entities = self.entity_extractor.extract(user_input)
+            topics = entities.get("topics", [])
+
+            if topics:
+                conversation.active_topic = [
+                    ActiveTopic(entity=topic)
+                    for topic in topics
+                ]
 
         # =========================
         # DECISION LAYER
@@ -163,7 +277,7 @@ class JarvisRuntime:
 
             self._record_conversation_entry(
                 conversation_id=conversation_id,
-                user_input=user_input,
+                user_input=original_user_input,
                 assistant_response=clarification.question,
             )
 
@@ -178,7 +292,7 @@ class JarvisRuntime:
         if decision.type == "reject":
             self._record_conversation_entry(
                 conversation_id=conversation_id,
-                user_input=user_input,
+                user_input=original_user_input,
                 assistant_response="Request rejected.",
             )
 
@@ -193,7 +307,7 @@ class JarvisRuntime:
         if decision.type == "respond":
             self._record_conversation_entry(
                 conversation_id=conversation_id,
-                user_input=user_input,
+                user_input=original_user_input,
                 assistant_response="Request responded to without execution.",
             )
 
@@ -215,7 +329,7 @@ class JarvisRuntime:
         if plan is None or not plan.steps:
             self._record_conversation_entry(
                 conversation_id=conversation_id,
-                user_input=user_input,
+                user_input=original_user_input,
                 assistant_response=None,
             )
 
@@ -242,7 +356,7 @@ class JarvisRuntime:
         if not plan.steps:
             self._record_conversation_entry(
                 conversation_id=conversation_id,
-                user_input=user_input,
+                user_input=original_user_input,
                 assistant_response=None,
             )
 
@@ -268,7 +382,7 @@ class JarvisRuntime:
         # =========================
         self._record_conversation_entry(
             conversation_id=conversation_id,
-            user_input=user_input,
+            user_input=original_user_input,
             assistant_response=str(results) if results else None,
         )
 

@@ -52,7 +52,11 @@ class EntityExtractor:
         # =========================
         # 🧠 SEGMENTATION (ALIGNED WITH PLANNER)
         # =========================
-        segments = re.split(r"\band\b|\bthen\b|,", text)
+
+        if text.startswith("compare "):
+            segments = [text]
+        else:
+            segments = re.split(r"\band\b|\bthen\b|,", text)
 
         for segment in segments:
             segment = segment.strip()
@@ -84,6 +88,11 @@ class EntityExtractor:
             # =========================
             # 🧠 TOPIC EXTRACTION
             # =========================
+            if segment.startswith("compare "):
+                comparison = segment[8:].strip()
+                topics = [t.strip() for t in comparison.split(" and ")]
+                entities["topics"].extend(topics)
+                continue
 
             # explain pattern
             if "explain" in segment:

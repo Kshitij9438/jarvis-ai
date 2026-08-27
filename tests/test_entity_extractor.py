@@ -17,7 +17,6 @@ def make_extractor():
     with patch("planner.entity_extractor.LLM"):
         return EntityExtractor()
 
-
 # --------------------------------------------------
 # Website extraction
 # --------------------------------------------------
@@ -166,3 +165,44 @@ def test_empty_input():
         "file_path": None,
         "topics": [],
     }
+
+# --------------------------------------------------
+# M5: Multiple topic extraction
+# --------------------------------------------------
+
+def test_extracts_multiple_comparison_topics():
+    extractor = make_extractor()
+
+    entities = extractor.extract(
+        "compare transformers and neural networks"
+    )
+
+    assert entities["topics"] == [
+        "transformers",
+        "neural networks",
+    ]
+
+
+def test_preserves_multiword_topic():
+    extractor = make_extractor()
+
+    entities = extractor.extract(
+        "explain machine learning"
+    )
+
+    assert entities["topics"] == [
+        "machine learning"
+    ]
+
+
+def test_extracts_multiple_multiword_comparison_topics():
+    extractor = make_extractor()
+
+    entities = extractor.extract(
+        "compare artificial intelligence and machine learning"
+    )
+
+    assert entities["topics"] == [
+        "artificial intelligence",
+        "machine learning",
+    ]

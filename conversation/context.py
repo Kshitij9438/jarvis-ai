@@ -133,7 +133,7 @@ class ConversationContext(BaseModel):
         description="Conversation history across turns.",
     )
 
-    active_topic: ActiveTopic | None = Field(
+    active_topic: list[ActiveTopic] | None = Field(
         None,
         description="Currently active conversational entity/topic.",
     )
