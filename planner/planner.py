@@ -13,6 +13,16 @@ from planner.scorer import PlanScorer
 from planner.tool_selector import ToolSelector
 from control.control_layer import ControlLayer
 from execution.context_dependency import ContextDependencyResolver
+from planner.retrieval_signals import (
+    has_explicit_search_request,
+    requires_current_information,
+)
+from planner.retrieval_decision import (
+    RetrievalDecision,
+    should_use_retrieval,
+)
+from execution.context_signals import has_retrieved_content
+
 
 
 class Planner:
@@ -34,19 +44,24 @@ class Planner:
         self.context_resolver = ContextDependencyResolver(self.registry)
 
     # =========================
-    # 🧠 CONDITIONAL RETRIEVER (OPTIONAL SAFETY)
+    # RETRIEVAL DECISION
     # =========================
-    def _should_use_retriever(self, query: str) -> bool:
-        q = query.lower()
+    def _should_use_retriever(self, query: str, context=None) -> bool:
+        """
+        Determine whether web retrieval should be used for a query.
 
-        keywords = [
-            "what is", "who is", "explain",
-            "latest", "recent",
-            "architecture", "theory",
-            "define", "in ai", "in ml"
-        ]
+        Retrieval is driven by explicit currentness/search signals and
+        existing retrieved context, not by lexical presence of words such
+        as "explain" or "architecture".
+        """
+        decision = should_use_retrieval(
+            requires_current_information=requires_current_information(query),
+            explicit_search_request=has_explicit_search_request(query),
+            context_available=has_retrieved_content(context),
+        )
 
-        return any(k in q for k in keywords)
+        return decision == RetrievalDecision.USE
+
 
     def _is_trivial_input(self, text: str) -> bool:
         t = text.lower().strip()
@@ -88,15 +103,34 @@ class Planner:
 
             print(f"\n--- SEGMENT: {segment} ---")
 
-            # 🔍 tool selection
-            segment_tools = self.tool_selector.select(segment, top_k=2, context=context)
-            tool_names = [t.name for t in segment_tools]
+            # TOOL SELECTION
+            segment_tools = self.tool_selector.select(
+                segment,
+                top_k=2,
+                context=context,
+            )
 
-            # 🔥 OPTIONAL BOOST (can remove later)
-            if "explain" in tool_names and self._should_use_retriever(segment):
+            # RETRIEVAL POLICY
+            should_retrieve = self._should_use_retriever(
+                segment,
+                context,
+            )
+
+            if should_retrieve:
                 retriever = self.registry.get("web_retriever")
-                if retriever and "web_retriever" not in tool_names:
+
+                if retriever and all(
+                    tool.name != "web_retriever"
+                    for tool in segment_tools
+                ):
                     segment_tools.append(retriever)
+
+            else:
+                segment_tools = [
+                    tool
+                    for tool in segment_tools
+                    if tool.name != "web_retriever"
+                ]
 
             # 🔗 dependency expansion (STATIC ONLY)
             final_tools = []
