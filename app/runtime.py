@@ -3,6 +3,7 @@ from uuid import UUID
 from planner.planner import Planner
 from planner.entity_extractor import EntityExtractor
 from planner.decision import DecisionType, PlannerDecision
+from planner.request_understanding_adapter import RequestUnderstandingAdapter
 
 from executor.executor import Executor
 from tools.registry import ToolRegistry
@@ -95,9 +96,12 @@ class JarvisRuntime:
         self.conversation_manager = ConversationManager()
 
         # =========================
-        # ENTITY EXTRACTION
+        # REQUEST UNDERSTANDING
         # =========================
         self.entity_extractor = EntityExtractor()
+        self.request_understanding_adapter = RequestUnderstandingAdapter(
+            self.entity_extractor
+        )
 
     # =========================
     # PUBLIC REQUEST API
@@ -230,20 +234,6 @@ class JarvisRuntime:
                     resolution,
                 )
 
-        # =========================
-        # ENTITY EXTRACTION
-        # =========================
-        # Do not overwrite existing conversational topics when this
-        # request is a reference-based follow-up.
-        if reference is None:
-            entities = self.entity_extractor.extract(user_input)
-            topics = entities.get("topics", [])
-
-            if topics:
-                conversation.active_topic = [
-                    ActiveTopic(entity=topic)
-                    for topic in topics
-                ]
 
         # =========================
         # DECISION LAYER
@@ -318,6 +308,28 @@ class JarvisRuntime:
                 "context": context,
                 "decision": decision,
             }
+
+        # =========================
+        # REQUEST UNDERSTANDING
+        # =========================
+        request_understanding = self.request_understanding_adapter.understand(
+            user_input,
+            decision,
+        )
+
+        # Do not overwrite existing conversational topics when this request
+        # is a reference-based follow-up.
+        if reference is None:
+            entities = {}
+            for understanding in request_understanding:
+                if understanding.entities:
+                    entities.update(understanding.entities)
+            topics = entities.get("topics", [])
+            if topics:
+                conversation.active_topic = [
+                    ActiveTopic(entity=topic)
+                    for topic in topics
+                ]
 
         # EXECUTE -> proceed to planning and execution
 
