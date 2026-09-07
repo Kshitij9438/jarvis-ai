@@ -18,7 +18,7 @@ from tools.basic_tools import (
 from tools.calculator_tool import CalculatorTool
 from tools.explain_tool import ExplainTool
 from tools.load_doc_tool import LoadDocTool
-
+from planner.capability_selector import Capability
 
 # ==========================================================
 # Fake semantic matcher
@@ -158,3 +158,13 @@ def test_hard_filter_requires_digits_for_calculator():
     names = [t.name for t in tools]
 
     assert "calculator" not in names
+
+def test_select_uses_supplied_capability():
+    selector = make_selector()
+
+    tools = selector.select(
+        "transformers",
+        capability=Capability.KNOWLEDGE,
+    )
+
+    assert any(t.name == "explain" for t in tools)

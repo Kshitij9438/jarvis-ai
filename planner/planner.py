@@ -22,6 +22,7 @@ from planner.retrieval_decision import (
     should_use_retrieval,
 )
 from execution.context_signals import has_retrieved_content
+from planner.capability_selector import CapabilitySelector
 
 
 
@@ -42,6 +43,7 @@ class Planner:
         self.tool_selector = ToolSelector(self.registry)
         self.control_layer = ControlLayer()
         self.context_resolver = ContextDependencyResolver(self.registry)
+        self.capability_selector = CapabilitySelector()
 
     # =========================
     # RETRIEVAL DECISION
@@ -101,13 +103,16 @@ class Planner:
         # =========================
         for segment in segments:
 
+
             print(f"\n--- SEGMENT: {segment} ---")
+            capability = self.capability_selector.select(segment)
 
             # TOOL SELECTION
             segment_tools = self.tool_selector.select(
                 segment,
                 top_k=2,
                 context=context,
+                capability=capability
             )
 
             # RETRIEVAL POLICY

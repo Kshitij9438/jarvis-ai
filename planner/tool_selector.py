@@ -1,14 +1,25 @@
 import re
 from typing import List, Set, Tuple
 
+from planner.capability_selector import Capability
+
 
 class ToolSelector:
     """
     V3 — Clean, Intent-Driven Tool Selector
+
     Responsibilities:
-    - Select best tools for a query
+    - Select best concrete tools for a query
+    - Use an upstream capability when provided
     - NO dependency logic
     - NO context mutation logic
+
+    M7.4:
+    Capability determination is owned by CapabilitySelector.
+
+    Planner now supplies the resolved capability to ToolSelector.
+    The old internal intent detection remains only as a compatibility
+    fallback when no capability is supplied.
     """
 
     def __init__(self, registry):
@@ -28,7 +39,13 @@ class ToolSelector:
     # =========================
     # 🚀 MAIN SELECT
     # =========================
-    def select(self, query: str, top_k: int = 2, context=None) -> List:
+    def select(
+        self,
+        query: str,
+        top_k: int = 2,
+        context=None,
+        capability: Capability | None = None,
+    ) -> List:
         print(f"\n[ToolSelector V3] Query: '{query}'")
 
         tools = self.registry.list_tools()
@@ -39,8 +56,16 @@ class ToolSelector:
         if not valid_tools:
             return self._safe_fallback()
 
-        # 2. INTENT DETECTION
-        intents = self._detect_intents(query)
+        # 2. CAPABILITY
+        #
+        # M7.4: CapabilitySelector becomes the owner of capability
+        # determination. During the incremental migration, preserve the
+        # legacy detection path when no capability has been supplied.
+        if capability is not None:
+            intents = {capability.value}
+        else:
+            intents = self._detect_intents(query)
+
         if not intents:
             intents.add("information")
 
@@ -101,9 +126,16 @@ class ToolSelector:
         return valid
 
     # =========================
-    # 🧠 INTENT DETECTION
+    # 🧠 LEGACY INTENT DETECTION
     # =========================
     def _detect_intents(self, query: str) -> Set[str]:
+        """
+        Legacy capability detection retained temporarily for the
+        incremental M7.4 migration.
+
+        Once Planner is repointed to CapabilitySelector and the
+        replacement path is fully tested, this logic can be removed.
+        """
         q = query.lower()
         intents = set()
 
@@ -126,24 +158,34 @@ class ToolSelector:
     # =========================
     # 🧠 SCORING
     # =========================
-    def _score_tools(self, query: str, tools: List, intents: Set[str]) -> List[Tuple]:
+    def _score_tools(
+        self,
+        query: str,
+        tools: List,
+        intents: Set[str],
+    ) -> List[Tuple]:
         q = query.lower()
         scored = []
 
         for tool in tools:
             score = 0.0
 
-            # Intent alignment
+            # Intent / capability alignment
             if tool.name == "calculator" and "calculation" in intents:
                 score += 3
 
             if tool.name == "open_website" and "navigation" in intents:
                 score += 3
 
-            if tool.name in ["load_document", "rag_search"] and "document" in intents:
+            if tool.name in ["load_document", "rag_search"] \
+                    and "document" in intents:
                 score += 3
 
-            if tool.name in ["explain", "web_retriever"] and "information" in intents:
+            if tool.name in ["explain", "web_retriever"] \
+                    and (
+                        "information" in intents
+                        or "knowledge" in intents
+                    ):
                 score += 3
 
             # Keyword matching

@@ -320,11 +320,15 @@ class JarvisRuntime:
         # Do not overwrite existing conversational topics when this request
         # is a reference-based follow-up.
         if reference is None:
-            entities = {}
+            topics = []
+
             for understanding in request_understanding:
-                if understanding.entities:
-                    entities.update(understanding.entities)
-            topics = entities.get("topics", [])
+                extracted_topics = understanding.entities.get("topics", [])
+
+                for topic in extracted_topics:
+                    if topic not in topics:
+                        topics.append(topic)
+
             if topics:
                 conversation.active_topic = [
                     ActiveTopic(entity=topic)

@@ -268,7 +268,7 @@ scoring, and fallback behavior.
 **Public Method**
 
 ```text
-select(query, top_k=2, context=None)
+select(query, top_k=2, context=None, capability=None)
 ```
 
 **Inputs**
@@ -276,6 +276,7 @@ select(query, top_k=2, context=None)
 * User query
 * Tool registry
 * Optional runtime context
+* Optional upstream capability
 
 **Output**
 

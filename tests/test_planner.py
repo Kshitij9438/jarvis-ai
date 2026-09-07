@@ -1,5 +1,5 @@
 from planner.planner import Planner
-
+from planner.capability_selector import Capability
 class FakeRegistry:
     def __init__(self):
         from tools.basic_tools import OpenWebsiteTool, EchoTool
@@ -155,4 +155,143 @@ def test_segment_order_preserved():
     assert actions == [
         "open_website",
         "explain",
+    ]
+def test_planner_uses_capability_selector():
+    planner = Planner(FakeRegistry())
+
+    calls = []
+
+    original_select = planner.capability_selector.select
+
+    def tracking_select(query):
+        capability = original_select(query)
+        calls.append((query, capability))
+        return capability
+
+    planner.capability_selector.select = tracking_select
+
+    plan = planner.plan("open github")
+
+    assert plan.steps
+    assert calls == [
+        ("open github", Capability.NAVIGATION)
+    ]
+
+def test_planner_passes_capability_to_tool_selector():
+    planner = Planner(FakeRegistry())
+
+    calls = []
+
+    original_select = planner.tool_selector.select
+
+    def tracking_select(
+        query,
+        top_k=2,
+        context=None,
+        capability=None,
+    ):
+        calls.append((query, capability))
+        return original_select(
+            query,
+            top_k=top_k,
+            context=context,
+            capability=capability,
+        )
+
+    planner.tool_selector.select = tracking_select
+
+    plan = planner.plan("open github")
+
+    assert plan.steps
+    assert calls == [
+        ("open github", Capability.NAVIGATION)
+    ]
+
+def test_planner_passes_calculation_capability():
+    planner = Planner(FakeRegistry())
+
+    calls = []
+
+    original_select = planner.tool_selector.select
+
+    def tracking_select(
+        query,
+        top_k=2,
+        context=None,
+        capability=None,
+    ):
+        calls.append((query, capability))
+        return original_select(
+            query,
+            top_k=top_k,
+            context=context,
+            capability=capability,
+        )
+
+    planner.tool_selector.select = tracking_select
+
+    planner.plan("calculate 25 + 17")
+
+    assert calls == [
+        ("calculate 25 + 17", Capability.CALCULATION)
+    ]
+
+
+def test_planner_passes_document_capability():
+    planner = Planner(FakeRegistry())
+
+    calls = []
+
+    original_select = planner.tool_selector.select
+
+    def tracking_select(
+        query,
+        top_k=2,
+        context=None,
+        capability=None,
+    ):
+        calls.append((query, capability))
+        return original_select(
+            query,
+            top_k=top_k,
+            context=context,
+            capability=capability,
+        )
+
+    planner.tool_selector.select = tracking_select
+
+    planner.plan("summarize report.pdf")
+
+    assert calls == [
+        ("summarize report.pdf", Capability.DOCUMENT)
+    ]
+
+
+def test_planner_passes_knowledge_capability():
+    planner = Planner(FakeRegistry())
+
+    calls = []
+
+    original_select = planner.tool_selector.select
+
+    def tracking_select(
+        query,
+        top_k=2,
+        context=None,
+        capability=None,
+    ):
+        calls.append((query, capability))
+        return original_select(
+            query,
+            top_k=top_k,
+            context=context,
+            capability=capability,
+        )
+
+    planner.tool_selector.select = tracking_select
+
+    planner.plan("explain graph traversal")
+
+    assert calls == [
+        ("explain graph traversal", Capability.KNOWLEDGE)
     ]
