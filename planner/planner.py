@@ -23,6 +23,7 @@ from planner.retrieval_decision import (
 )
 from execution.context_signals import has_retrieved_content
 from planner.capability_selector import CapabilitySelector
+from planner.plan_builder import PlanBuilder
 
 
 
@@ -44,6 +45,13 @@ class Planner:
         self.control_layer = ControlLayer()
         self.context_resolver = ContextDependencyResolver(self.registry)
         self.capability_selector = CapabilitySelector()
+        self.plan_builder = PlanBuilder(
+            registry=self.registry,
+            capability_selector=self.capability_selector,
+            tool_selector=self.tool_selector,
+            task_builder=self.task_builder,
+            entity_extractor=self.entity_extractor,
+        )
 
     # =========================
     # RETRIEVAL DECISION
@@ -83,95 +91,13 @@ class Planner:
                 Action(action="echo", args={"text": "Hey! How can I help you?"})
             ])
 
-        import re
-
         # =========================
-        # 🧠 STEP 0: SEGMENTATION
+        # 🧱 PLAN BUILDING
         # =========================
-        segments = [
-            s.strip()
-            for s in re.split(r"\band\b|\bthen\b|,", user_input)
-            if s.strip()
-        ]
-
-        print(f"DEBUG: Segments → {segments}")
-
-        all_tasks = []
-
-        # =========================
-        # 🧠 STEP 1: PER-SEGMENT PROCESSING
-        # =========================
-        for segment in segments:
-
-
-            print(f"\n--- SEGMENT: {segment} ---")
-            capability = self.capability_selector.select(segment)
-
-            # TOOL SELECTION
-            segment_tools = self.tool_selector.select(
-                segment,
-                top_k=2,
-                context=context,
-                capability=capability
-            )
-
-            # RETRIEVAL POLICY
-            should_retrieve = self._should_use_retriever(
-                segment,
-                context,
-            )
-
-            if should_retrieve:
-                retriever = self.registry.get("web_retriever")
-
-                if retriever and all(
-                    tool.name != "web_retriever"
-                    for tool in segment_tools
-                ):
-                    segment_tools.append(retriever)
-
-            else:
-                segment_tools = [
-                    tool
-                    for tool in segment_tools
-                    if tool.name != "web_retriever"
-                ]
-
-            # 🔗 dependency expansion (STATIC ONLY)
-            final_tools = []
-            added = set()
-
-            for tool in segment_tools:
-                for dep_name in getattr(tool, "requires", []):
-                    dep_tool = self.registry.get(dep_name)
-                    if dep_tool and dep_tool.name not in added:
-                        final_tools.append(dep_tool)
-                        added.add(dep_tool.name)
-
-                if tool.name not in added:
-                    final_tools.append(tool)
-                    added.add(tool.name)
-
-            segment_tools = final_tools
-
-            print(f"DEBUG: Segment Tools → {[t.name for t in segment_tools]}")
-
-            if not segment_tools:
-                continue
-
-            # 🧱 build tasks
-            segment_entities = self.entity_extractor.extract(segment)
-
-            segment_tasks = self.task_builder.build_tasks(
-                segment,
-                segment_tools,
-                segment_entities
-            )
-
-            print(f"DEBUG: Segment Tasks → {segment_tasks}")
-
-            all_tasks.extend(segment_tasks)
-
+        all_tasks = self.plan_builder.build(
+            user_input,
+            context,
+        )
         # =========================
         # ❌ NO TASKS
         # =========================
