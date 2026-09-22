@@ -1,6 +1,12 @@
 # JARVIS
 
-> A local AI agent runtime focused on request understanding, capability-based planning, deterministic execution control, conversational context, retrieval, and inspectable execution.
+### Local AI Agent Runtime
+
+> **Understand → Plan → Control → Execute → Evaluate**
+
+A local, tool-using AI runtime focused on request understanding, capability-based planning, deterministic execution control, conversational context, retrieval, and inspectable execution.
+
+**Stack:** Python · FastAPI · React · TypeScript · Ollama · RAG
 
 JARVIS is an actively developed agent system built around a simple idea:
 
@@ -69,6 +75,42 @@ Response
 ```
 
 The goal is to make the reasoning and execution boundaries explicit, testable, and observable.
+
+---
+
+## Demo
+
+JARVIS is designed as a developer-facing AI runtime rather than a chat UI alone.
+
+A typical interaction looks like:
+
+```text
+User
+  │
+  │  "Open GitHub and explain transformers"
+  ▼
+JARVIS
+  │
+  ├── Understand the request
+  ├── Decide whether to execute / clarify / respond / reject
+  ├── Select capabilities and tools
+  ├── Build and validate a plan
+  ├── Execute through the control layer
+  └── Evaluate the result
+  │
+  ▼
+Response
+```
+
+The developer GUI also exposes execution state and an **Inspector** surface for examining:
+
+- execution events
+- plan steps
+- tool/argument information
+- runtime responses
+- errors and execution state
+
+The GUI is intentionally being developed alongside the runtime so that execution is not a black box.
 
 ---
 
