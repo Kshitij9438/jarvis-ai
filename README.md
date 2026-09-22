@@ -1,58 +1,22 @@
 # JARVIS
 
-### Local AI Agent Runtime
+### A local AI agent runtime built around request understanding, planning, deterministic execution control, conversational context, and inspectable execution.
 
-> **Understand → Plan → Control → Execute → Evaluate**
+JARVIS is an experimental local AI runtime designed to turn natural-language requests into structured, executable workflows.
 
-A local, tool-using AI runtime focused on request understanding, capability-based planning, deterministic execution control, conversational context, retrieval, and inspectable execution.
+The system separates **understanding**, **planning**, **control**, and **execution** so that language-model reasoning does not directly control the execution layer.
 
-**Stack:** Python · FastAPI · React · TypeScript · Ollama · RAG
-
-JARVIS is an actively developed agent system built around a simple idea:
-
-**an AI assistant should understand a request before it decides how to execute it.**
-
-Instead of treating the LLM as the entire system, JARVIS separates request understanding, planning, tool selection, execution, evaluation, and control into explicit components.
-
-> **Current status:** M0–M6 complete · **M7 — Planner Migration in progress** · M8–M18 planned
+> **Current status: M7 — Planner Migration (in progress)**
 
 ---
 
 ## What is JARVIS?
 
-JARVIS is a **local, tool-using AI runtime** that turns natural-language requests into structured plans and executes them through registered tools.
+JARVIS explores how a practical AI agent can be designed as a **structured runtime rather than a single LLM prompt**.
 
-The current system includes:
+A request moves through a sequence of stages:
 
-- structured request understanding
-- conversational state and reference resolution
-- explicit execute / clarify / respond / reject decisions
-- capability-based planning
-- tool selection and task construction
-- plan optimization and validation
-- deterministic execution control
-- execution + evaluation loops
-- local RAG over documents
-- web retrieval
-- calculator and navigation tools
-- FastAPI backend
-- React + TypeScript developer GUI
-
-The project is currently undergoing an incremental architectural migration, so the codebase intentionally contains both established components and components being moved toward the final architecture.
-
----
-
-## Why JARVIS?
-
-Many assistant prototypes can be reduced to:
-
-```
-user prompt → LLM → tool
-```
-
-JARVIS is being built around a more explicit pipeline:
-
-```
+```text
 User Request
      ↓
 Request Understanding
@@ -61,262 +25,320 @@ Decision
      ↓
 Capability Selection
      ↓
-Tool Selection
+Planning
      ↓
-Plan Construction
+Deterministic Control
      ↓
-Validation / Optimization
-     ↓
-Controlled Execution
+Execution
      ↓
 Evaluation
      ↓
-Response
+Repair / Completion
 ```
 
-The goal is to make the reasoning and execution boundaries explicit, testable, and observable.
+The goal is to make agent behavior **inspectable, testable, and controllable** while still using an LLM for natural-language understanding and reasoning.
 
 ---
 
-## Demo
+## Why JARVIS?
 
-JARVIS is designed as a developer-facing AI runtime rather than a chat UI alone.
+Many simple AI agents follow a pattern similar to:
 
-A typical interaction looks like:
+```text
+User → LLM → Tool
+```
+
+JARVIS experiments with a more structured runtime:
 
 ```text
 User
-  │
-  │  "Open GitHub and explain transformers"
-  ▼
-JARVIS
-  │
-  ├── Understand the request
-  ├── Decide whether to execute / clarify / respond / reject
-  ├── Select capabilities and tools
-  ├── Build and validate a plan
-  ├── Execute through the control layer
-  └── Evaluate the result
-  │
-  ▼
-Response
+ ↓
+Understand the request
+ ↓
+Determine what should happen
+ ↓
+Build a plan
+ ↓
+Apply deterministic control
+ ↓
+Execute tools
+ ↓
+Evaluate the result
+ ↓
+Repair or complete
 ```
 
-The developer GUI also exposes execution state and an **Inspector** surface for examining:
-
-- execution events
-- plan steps
-- tool/argument information
-- runtime responses
-- errors and execution state
-
-The GUI is intentionally being developed alongside the runtime so that execution is not a black box.
+This creates explicit boundaries between probabilistic reasoning and deterministic system behavior.
 
 ---
 
 ## Architecture
 
-### Current M7 architecture
-
-The current branch is in the middle of an incremental planner migration. The diagram below reflects the **current runtime boundaries**, not the final planned architecture.
-
 ```mermaid
 flowchart TD
-    U["User Request"]
+    U[User Request]
 
-    RT["JarvisRuntime"]
+    subgraph UNDERSTANDING[Request Understanding]
+        RU[Request Understanding]
+        DEC[Decision Layer]
+        REF[Reference Resolution]
+    end
 
-    CS["Conversation State"]
-    RU["Request Understanding"]
-    DEC["Decision Layer"]
+    subgraph PLANNING[Planning]
+        CAP[Capability Selector]
+        PB[Plan Builder]
+        OPT[Optimizer]
+        VAL[Validator]
+    end
 
-    PL["Planner"]
-    CAP["Capability Selector"]
-    TS["Tool Selector"]
-    PB["Plan Builder"]
-    TB["Task Builder"]
-    OPT["Optimizer"]
-    VAL["Validator"]
+    subgraph CONTROL[Deterministic Control]
+        CL[Control Layer]
+        CD[Context Dependency Resolution]
+    end
 
-    CTRL["Control Layer"]
-    LOOP["Execution Loop"]
-    EX["Executor"]
+    subgraph EXECUTION[Execution]
+        EX[Executor]
+        EL[Execution Loop]
+        EV[Evaluator]
+    end
 
-    TOOLS["Registered Tools"]
-    RAG["RAG / Document Retrieval"]
-    WEB["Web Retrieval"]
+    TOOLS[Tool Registry]
+    RAG[RAG Pipeline]
+    CONV[Conversation Context]
+    LLM[Local LLM - Ollama]
 
-    U --> RT
-
-    RT --> CS
-    RT --> RU
-    RT --> DEC
-
-    CS --> PL
+    U --> RU
     RU --> DEC
-    DEC -->|"EXECUTE"| PL
-
-    PL --> CAP
-    CAP --> TS
-    TS --> PB
-    PB --> TB
-    TB --> OPT
+    RU --> REF
+    DEC --> CAP
+    CAP --> PB
+    PB --> OPT
     OPT --> VAL
+    VAL --> CL
+    CL --> CD
+    CD --> EL
+    EL --> EX
+    EX --> EV
+    EV --> EL
 
-    VAL --> CTRL
-    CTRL --> LOOP
-    LOOP --> EX
+    LLM -.-> RU
+    LLM -.-> PB
 
-    EX --> TOOLS
-    EX --> RAG
-    EX --> WEB
+    TOOLS --> EX
+    RAG --> TOOLS
+    CONV --> RU
+    CONV --> CL
 ```
 
-The architecture is deliberately being migrated in small, test-protected steps rather than rewritten in one pass.
-
-See the [migration plan](docs/PLAN.md) for the full M0–M18 roadmap.
+The architecture is being migrated incrementally during **M7**, so some boundaries are currently transitional rather than final.
 
 ---
 
-## Request execution
+## How a Request Works
 
-For a request such as:
+Consider:
 
+```text
+Open GitHub and calculate 25 * 16
 ```
-Open GitHub and explain transformers
+
+JARVIS can decompose the request into multiple actions:
+
+```text
+1. open_website
+2. calculator
 ```
 
-JARVIS decomposes the request into segments, determines the required capability for each segment, selects candidate tools, constructs tasks, and passes the resulting plan through optimization, validation, control, and execution.
+The runtime then executes those actions while exposing the execution lifecycle to the developer interface.
 
-The current execution system also evaluates results and can perform a **subtractive repair**: failed steps can be removed while successful steps are preserved. It does not currently invent replacement steps during repair.
+The current system can surface events such as:
+
+```text
+request started
+execution started
+attempt started
+steps executed
+evaluation completed
+execution completed
+request completed
+```
+
+For failed execution paths, the runtime can also enter a repair attempt.
+
+For example, an invalid intermediate step may be removed while successful work is preserved.
 
 ---
 
-## Core components
+## Current Capabilities
 
-| Component | Responsibility |
-| --- | --- |
-| `JarvisRuntime` | Application-level runtime and component wiring |
-| `RequestUnderstanding` | Structured representation of a understood request |
-| `PlannerDecision` | Execute / clarify / respond / reject contract |
-| `ReferenceResolver` | Resolves conversational references against state |
-| `CapabilitySelector` | Maps requests to high-level capabilities |
-| `PlanBuilder` | Converts requests into executable tasks |
-| `ToolSelector` | Chooses concrete registered tools |
-| `TaskBuilder` | Constructs planner tasks |
-| `TaskOptimizer` | Optimizes task ordering/content |
-| `PlanValidator` | Validates generated plans |
-| `ControlLayer` | Deterministic plan refinement and safety checks |
-| `ExecutionLoop` | Execute → evaluate → repair loop |
-| `Executor` | Runs registered tools |
-| `ConversationManager` | Maintains conversation state |
-| `RAGQA` | Document ingestion and retrieval-based QA |
-| `ToolRegistry` | Central registry for available capabilities |
+### Request understanding
 
----
+JARVIS contains explicit request-understanding structures for:
 
-## Design principles
+- request segmentation
+- entity extraction
+- decision handling
+- conversational references
+- clarification handling
 
-### 1. Understand before executing
+### Planning
 
-A request can be classified as something that should execute, clarify, respond conversationally, or be rejected before normal planning proceeds.
+The planner currently works with explicit architectural boundaries for:
 
-### 2. Capability is not the same as a tool
+- capability selection
+- plan construction
+- task construction
+- optimization
+- validation
+- retrieval policy
 
-JARVIS is migrating toward a separation between:
+### Deterministic execution control
 
-```
-request
-   ↓
-capability
-   ↓
-candidate tools
-   ↓
-plan
-```
+The control layer sits between planning and execution and performs deterministic checks such as:
 
-This prevents concrete tool names from becoming the primary abstraction for request understanding.
+- argument/context validation
+- query sanitization
+- deduplication
+- canonical ordering
+- fallback handling
+- safe arithmetic evaluation
 
-### 3. Keep critical control deterministic
+### Tool execution
 
-The Control Layer performs deterministic checks around arguments, intent, dependencies, sanitization, deduplication, ordering, and fallback before execution.
+The current runtime includes tools for capabilities such as:
 
-### 4. Make execution observable
-
-The backend exposes execution events, and the GUI includes a Developer Inspector for inspecting execution state, plans, and runtime responses.
-
----
-
-## Current capabilities
-
-The current runtime includes registered tools for:
-
-- opening websites
-- conversational echo responses
-- calculator operations
-- document loading
-- document/RAG search
+- web navigation
+- calculation
 - explanation
+- document loading
+- RAG search
 - web retrieval
+- echo/testing
 
-The runtime also includes conversation state, reference resolution, local RAG, and an execution/evaluation loop.
+### Conversation context
 
----
+Requests can be associated with conversation state so that the runtime can reason about references and previous context.
 
-## Local LLM
+### RAG
 
-JARVIS currently uses **Ollama** as its local LLM interface.
+JARVIS contains a retrieval pipeline built around:
 
-Configuration is provided through environment variables:
-
-```env
-MODEL_NAME=phi3
-TEMPERATURE=0.3
+```text
+Documents
+   ↓
+Ingestion
+   ↓
+Embeddings
+   ↓
+Vector Store
+   ↓
+Retriever
+   ↓
+RAG QA
 ```
 
-See [.env.example](.env.example).
+### Developer Inspector
+
+The GUI exposes runtime information including:
+
+- execution events
+- execution attempts
+- plan steps
+- argument counts
+- raw responses
+- completion state
 
 ---
 
-## Running locally
+# JARVIS in Action
 
-### Backend
+## Landing Interface
 
-Prerequisites:
+![JARVIS landing interface](docs/assets/jarvis-landing.png)
+
+The current GUI provides a conversational interface for interacting with the local runtime.
+
+---
+
+## Full Runtime Session
+
+![JARVIS full session](docs/assets/jarvis-full-session.png)
+
+This view shows the system operating across multiple interactions, including:
+
+- conversational history
+- natural-language requests
+- tool execution
+- multi-step plans
+- execution results
+- runtime inspection
+
+---
+
+## Developer Inspector
+
+![JARVIS developer inspector](docs/assets/jarvis-inspector.png)
+
+The Developer Inspector exposes the internal execution lifecycle, making the runtime behavior easier to observe while developing the system.
+
+---
+
+# Running JARVIS Locally
+
+## Requirements
 
 - Python 3.12+
-- [uv](https://docs.astral.sh/uv/)
-- [Ollama](https://ollama.com/)
+- `uv`
+- Ollama
+- Node.js / npm
 
-Install dependencies:
+JARVIS currently uses a local Ollama model for LLM operations.
+
+The development environment has been tested with:
+
+```text
+phi3
+```
+
+---
+
+## Backend
+
+From the repository root:
 
 ```bash
 uv sync
 ```
 
-Configure the environment:
+Make sure Ollama is running and the required model is available:
 
 ```bash
-cp .env.example .env
+ollama pull phi3
 ```
 
-Make sure the configured Ollama model is available, then start the API:
+Start the API server:
 
 ```bash
 uv run uvicorn api.server:app --reload
 ```
 
-The backend exposes:
+The backend will be available at:
 
-```
-GET  /api/health
-POST /api/chat
-POST /api/chat/events
+```text
+http://127.0.0.1:8000
 ```
 
-### GUI
+Health endpoint:
 
-In a second terminal:
+```text
+http://127.0.0.1:8000/api/health
+```
+
+---
+
+## Frontend
+
+Open another terminal:
 
 ```bash
 cd gui
@@ -324,25 +346,29 @@ npm install
 npm run dev
 ```
 
-The GUI connects to the local FastAPI runtime.
+The Vite development server will normally run at:
+
+```text
+http://localhost:5173
+```
 
 ---
 
-## Testing
+# Testing
 
-The repository includes unit, integration, and regression-oriented tests covering areas such as:
+The project contains unit and integration tests covering areas such as:
 
-- request understanding
-- decision handling
-- clarification
-- reference resolution
-- capability selection
-- retrieval decisions
 - planning
-- optimization
+- request understanding
+- tool selection
 - validation
+- optimization
 - execution
+- reference resolution
 - conversation state
+- retrieval policy
+- execution repair
+- runtime request handling
 
 Run the Python test suite with:
 
@@ -352,96 +378,212 @@ uv run pytest
 
 ---
 
-## Project structure
+# Project Structure
 
-```
-.
-├── api/                 # FastAPI interface
-├── app/                 # Runtime and API models/events
-├── brain/               # LLM interface
-├── calculator/          # Calculator parsing
-├── config/              # Runtime configuration
-├── control/             # Control and execution loop
-├── conversation/        # Conversation state + references
-├── execution/           # Execution context and signals
-├── executor/            # Tool execution
-├── gui/                 # React + TypeScript GUI
-├── planner/             # Understanding + planning system
-├── rag/                 # Document RAG pipeline
-├── retriever/           # Web/text retrieval helpers
-├── tests/                # Automated tests
-├── tools/                # Registered tools and registry
-└── docs/                 # Architecture, audits, ADRs, tests, roadmap
+```text
+jarvis-ai/
+│
+├── api/
+│   └── server.py
+│
+├── app/
+│   ├── runtime.py
+│   ├── models.py
+│   └── events.py
+│
+├── brain/
+│   └── llm.py
+│
+├── planner/
+│   ├── planner.py
+│   ├── plan_builder.py
+│   ├── capability_selector.py
+│   ├── request_understanding.py
+│   ├── request_understanding_adapter.py
+│   ├── task_builder.py
+│   ├── optimizer.py
+│   └── validator.py
+│
+├── control/
+│   ├── control_layer.py
+│   ├── decision_layer.py
+│   ├── execution_loop.py
+│   └── evaluator.py
+│
+├── execution/
+│   └── context_dependency.py
+│
+├── executor/
+│   └── executor.py
+│
+├── conversation/
+│   ├── manager.py
+│   ├── context.py
+│   ├── reference_detector.py
+│   └── reference_resolver.py
+│
+├── rag/
+│   ├── embedder.py
+│   ├── ingestor.py
+│   ├── retriever.py
+│   └── qa.py
+│
+├── retriever/
+│
+├── tools/
+│   ├── registry.py
+│   ├── basic_tools.py
+│   ├── calculator_tool.py
+│   ├── explain_tool.py
+│   ├── load_doc_tool.py
+│   ├── rag_tool.py
+│   └── web_retriever_tool.py
+│
+├── gui/
+│   └── React + TypeScript frontend
+│
+├── tests/
+│
+└── docs/
+    ├── assets/
+    ├── diagrams/
+    ├── PLAN.md
+    └── architecture documentation
 ```
 
 ---
 
-## Developer GUI
+# Design Principles
 
-The GUI is intentionally more than a chat window.
+### 1. Understand before executing
 
-It currently provides:
+Natural-language input should not directly become tool execution.
 
-- conversational interaction
-- execution state
-- loading/error states
-- execution summaries
-- plan inspection
-- a Developer Inspector
-- raw runtime response inspection
+### 2. Capabilities are different from tools
 
-The GUI is currently the foundation for the later M12–M15 frontend milestones.
+A capability represents **what the system needs to accomplish**.
+
+A tool represents **how the system performs it**.
+
+This separation allows the planner to reason at a higher level than individual tool implementations.
+
+### 3. Keep deterministic control deterministic
+
+Validation, sanitization, deduplication, ordering, and execution safeguards should not depend unnecessarily on another LLM decision.
+
+### 4. Preserve observability
+
+Important runtime decisions and execution events should be inspectable during development.
+
+### 5. Migrate incrementally
+
+JARVIS is being evolved through explicit architectural milestones rather than rewriting the entire runtime at once.
 
 ---
 
-## Roadmap
+# Current Status
 
-JARVIS is being developed through an incremental migration:
+## Completed
 
+The current development branch has completed:
+
+```text
+M0
+M1
+M2
+M3
+M4
+M5
+M6
 ```
-M0–M1   Foundation and isolated defect fixes
-M2–M6   Conversation state, clarification, references, retrieval decisions
-M7      Planner migration                     ← CURRENT
-M8–M9   Context + execution contracts
-M10–M11 API contract + event streaming
-M12–M15 GUI architecture + rendering + polish
-M16–M17 Regression hardening + E2E scenarios
-M18     Final documentation reconciliation
+
+## In Progress
+
+```text
+M7 — Planner Migration
 ```
 
-The detailed milestone definitions and exit criteria live in [docs/PLAN.md](docs/PLAN.md).
+M7 is restructuring the runtime around a clearer separation between:
+
+```text
+Request Understanding
+        ↓
+Decision
+        ↓
+Planning
+```
+
+The migration is intentionally incremental so existing behavior and tests can be preserved while new architectural boundaries are introduced.
+
+## Planned
+
+Later milestones include further work on:
+
+- planner migration completion
+- execution/event contracts
+- API evolution
+- GUI restructuring
+- stronger end-to-end testing
+- documentation cleanup
+- final architectural consolidation
+
+These are **planned rather than currently implemented**.
 
 ---
 
-## Current limitations
+# Current Limitations
 
-JARVIS is an active engineering project.
+JARVIS is an active engineering project rather than a finished autonomous assistant.
 
-At the current M7 stage:
+Current limitations include:
 
-- the planner migration is not yet complete
-- the final API contract is still planned for M10
-- genuine push-based event streaming is planned for M11
-- the GUI architecture migration is planned for M12
-- response rendering improvements are planned for M13
-- the full end-to-end regression suite is planned for M17
+- planner migration is still in progress
+- some architectural boundaries are transitional
+- execution repair currently uses a constrained repair strategy
+- GUI architecture is still being evolved
+- some interfaces and documentation will change as migration milestones are completed
 
-These limitations are intentional parts of the migration roadmap rather than claims of completed functionality.
+The project intentionally documents these limitations rather than presenting future architecture as already implemented.
 
 ---
 
-## Documentation
+# Roadmap
 
-- [Architecture](docs/00-overview/architecture.md)
-- [Migration Plan](docs/PLAN.md)
-- [Architecture Decisions](docs/04-refactoring/architecture-decisions/)
-- [Testing](docs/05-testing/)
-- [Repository Specification](docs/01-repository-spec/)
+The detailed engineering roadmap is maintained in:
+
+[`docs/PLAN.md`](docs/PLAN.md)
+
+The roadmap is organized into milestones so architectural changes can be introduced and verified incrementally.
+
+---
+
+# Development Philosophy
+
+JARVIS is an exploration of a simple question:
+
+> **What does it take to build an AI agent as a real software system rather than just an LLM wrapped around a few tools?**
+
+The project focuses on the engineering boundaries that become important as an agent grows:
+
+```text
+Understanding
+Planning
+Context
+Tools
+Control
+Execution
+Evaluation
+Observability
+```
 
 ---
 
 ## Status
 
-**Active development — M7: Planner Migration**
+**Active development — M7 Planner Migration**
 
-The repository is intentionally evolving toward a more explicit separation between request understanding, decision-making, planning, control, and execution.
+Built with:
+
+**Python · FastAPI · Ollama · Pydantic · RAG · React · TypeScript · Vite**
+
+---
