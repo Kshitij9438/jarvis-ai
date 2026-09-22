@@ -76,50 +76,58 @@ The goal is to make the reasoning and execution boundaries explicit, testable, a
 
 ### Current M7 architecture
 
-```
-                           USER
-                             │
-                             ▼
-                    ┌────────────────┐
-                    │ JarvisRuntime  │
-                    └───────┬────────┘
-                            │
-             ┌──────────────┼──────────────┐
-             ▼              ▼              ▼
-      Conversation     Request          Decision
-         State        Understanding      Layer
-             │              │
-             └──────────────┼──────────────┘
-                            │
-                            ▼
-                         Planner
-                            │
-                 ┌──────────┴──────────┐
-                 ▼                     ▼
-        CapabilitySelector        ToolSelector
-                 │                     │
-                 └──────────┬──────────┘
-                            ▼
-                       PlanBuilder
-                            │
-                            ▼
-                       TaskBuilder
-                            │
-                            ▼
-                  Optimize / Validate
-                            │
-                            ▼
-                       ControlLayer
-                            │
-                            ▼
-                     ExecutionLoop
-                            │
-                            ▼
-                         Executor
-                            │
-              ┌─────────────┼─────────────┐
-              ▼             ▼             ▼
-            Tools           RAG           Web
+The current branch is in the middle of an incremental planner migration. The diagram below reflects the **current runtime boundaries**, not the final planned architecture.
+
+```mermaid
+flowchart TD
+    U["User Request"]
+
+    RT["JarvisRuntime"]
+
+    CS["Conversation State"]
+    RU["Request Understanding"]
+    DEC["Decision Layer"]
+
+    PL["Planner"]
+    CAP["Capability Selector"]
+    TS["Tool Selector"]
+    PB["Plan Builder"]
+    TB["Task Builder"]
+    OPT["Optimizer"]
+    VAL["Validator"]
+
+    CTRL["Control Layer"]
+    LOOP["Execution Loop"]
+    EX["Executor"]
+
+    TOOLS["Registered Tools"]
+    RAG["RAG / Document Retrieval"]
+    WEB["Web Retrieval"]
+
+    U --> RT
+
+    RT --> CS
+    RT --> RU
+    RT --> DEC
+
+    CS --> PL
+    RU --> DEC
+    DEC -->|"EXECUTE"| PL
+
+    PL --> CAP
+    CAP --> TS
+    TS --> PB
+    PB --> TB
+    TB --> OPT
+    OPT --> VAL
+
+    VAL --> CTRL
+    CTRL --> LOOP
+    LOOP --> EX
+
+    EX --> TOOLS
+    EX --> RAG
+    EX --> WEB
 ```
 
 The architecture is deliberately being migrated in small, test-protected steps rather than rewritten in one pass.
