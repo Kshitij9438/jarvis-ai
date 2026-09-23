@@ -5,7 +5,7 @@ from planner.entity_extractor import EntityExtractor
 from planner.arg_extractor import ArgExtractor
 
 from brain.llm import LLM
-from planner.optimizer import TaskOptimizer
+from planner.plan_optimizer import PlanOptimizer
 from planner.validator import PlanValidator
 from planner.intelligence import PlannerIntelligence
 from planner.scorer import PlanScorer
@@ -36,7 +36,7 @@ class Planner:
         self.task_builder = TaskBuilder(self.arg_extractor)
         self.entity_extractor = EntityExtractor()
 
-        self.optimizer = TaskOptimizer()
+        self.optimizer = PlanOptimizer()
         self.validator = PlanValidator()
         self.intelligence = PlannerIntelligence()
         self.scorer = PlanScorer(registry=self.registry)
