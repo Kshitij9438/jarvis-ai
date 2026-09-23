@@ -1,30 +1,249 @@
-from unittest.mock import Mock
+"""
+tests/test_plan_optimizer.py
+
+Regression tests for planner.plan_optimizer.PlanOptimizer.
+"""
 
 from planner.plan_optimizer import PlanOptimizer
 from planner.task import Task
 
 
-def test_plan_optimizer_delegates_to_legacy_optimizer():
-    optimizer = Mock()
-    optimizer.optimize.return_value = [
-        Task("explain", query="git")
+def make_optimizer():
+    return PlanOptimizer()
+
+
+# ==========================================================
+# Query normalization
+# ==========================================================
+
+def test_synonym_normalization_preserves_canonical_short_form():
+    """
+    Synonym normalization must preserve recognized canonical
+    short forms such as 'ai' instead of filtering them out.
+    """
+    optimizer = make_optimizer()
+
+    tasks = [
+        Task(
+            type="explain",
+            target=None,
+            file_path=None,
+            query="artificial intelligence",
+        )
     ]
 
-    plan_optimizer = PlanOptimizer(optimizer=optimizer)
+    optimized = optimizer.optimize(tasks)
 
-    tasks = [Task("explain", query="git")]
-
-    result = plan_optimizer.optimize(tasks)
-
-    assert result == [Task("explain", query="git")]
-    optimizer.optimize.assert_called_once_with(tasks)
+    assert len(optimized) == 1
+    assert optimized[0].query == "ai"
 
 
-def test_plan_optimizer_returns_empty_for_empty_tasks():
-    optimizer = Mock()
-    optimizer.optimize.return_value = []
+def test_learning_pattern_normalization():
+    optimizer = make_optimizer()
 
-    plan_optimizer = PlanOptimizer(optimizer=optimizer)
+    tasks = [
+        Task(
+            type="explain",
+            target=None,
+            file_path=None,
+            query="learn machine learning",
+        )
+    ]
 
-    assert plan_optimizer.optimize([]) == []
-    optimizer.optimize.assert_called_once_with([])
+    optimized = optimizer.optimize(tasks)
+
+    assert optimized[0].query == "ml basics"
+
+
+def test_noise_word_removal():
+    optimizer = make_optimizer()
+
+    tasks = [
+        Task(
+            type="explain",
+            target=None,
+            file_path=None,
+            query="please explain ai again",
+        )
+    ]
+
+    optimized = optimizer.optimize(tasks)
+
+    assert optimized[0].query == "explain ai"
+
+
+def test_duplicate_words_removed():
+    optimizer = make_optimizer()
+
+    tasks = [
+        Task(
+            type="explain",
+            target=None,
+            file_path=None,
+            query="git git git tutorial tutorial",
+        )
+    ]
+
+    optimized = optimizer.optimize(tasks)
+
+    assert optimized[0].query == "git tutorial"
+
+
+# ==========================================================
+# Deduplication
+# ==========================================================
+
+def test_duplicate_explain_removed():
+    optimizer = make_optimizer()
+
+    tasks = [
+        Task("explain", None, None, "git"),
+        Task("explain", None, None, "git"),
+    ]
+
+    optimized = optimizer.optimize(tasks)
+
+    assert len(optimized) == 1
+
+
+def test_duplicate_open_website_removed():
+    optimizer = make_optimizer()
+
+    tasks = [
+        Task("open_website", "github", None, None),
+        Task("open_website", "github", None, None),
+    ]
+
+    optimized = optimizer.optimize(tasks)
+
+    assert len(optimized) == 1
+
+
+def test_different_queries_not_deduplicated():
+    optimizer = make_optimizer()
+
+    tasks = [
+        Task("explain", None, None, "git"),
+        Task("explain", None, None, "docker"),
+    ]
+
+    optimized = optimizer.optimize(tasks)
+
+    assert len(optimized) == 2
+
+
+# ==========================================================
+# Invalid task filtering
+# ==========================================================
+
+def test_invalid_open_website_removed():
+    optimizer = make_optimizer()
+
+    tasks = [
+        Task("open_website", None, None, None),
+    ]
+
+    optimized = optimizer.optimize(tasks)
+
+    assert optimized == []
+
+
+def test_invalid_load_document_removed():
+    optimizer = make_optimizer()
+
+    tasks = [
+        Task("load_document", None, None, None),
+    ]
+
+    optimized = optimizer.optimize(tasks)
+
+    assert optimized == []
+
+
+def test_invalid_explain_removed():
+    optimizer = make_optimizer()
+
+    tasks = [
+        Task("explain", None, None, ""),
+    ]
+
+    optimized = optimizer.optimize(tasks)
+
+    assert optimized == []
+
+
+# ==========================================================
+# Dependency recovery
+# ==========================================================
+
+def test_loader_recovered_for_rag():
+    optimizer = make_optimizer()
+
+    loader = Task(
+        type="load_document",
+        target=None,
+        file_path="paper.pdf",
+        query=None,
+    )
+
+    rag = Task(
+        type="rag_search",
+        target=None,
+        file_path="paper.pdf",
+        query="summary",
+    )
+
+    optimized = optimizer.optimize([
+        loader,
+        rag,
+    ])
+
+    types = [task.type for task in optimized]
+
+    assert "load_document" in types
+    assert "rag_search" in types
+
+    assert types.index("load_document") < types.index("rag_search")
+
+
+# ==========================================================
+# Empty input
+# ==========================================================
+
+def test_empty_input():
+    optimizer = make_optimizer()
+
+    assert optimizer.optimize([]) == []
+
+
+def test_invalid_short_query_removed():
+    optimizer = make_optimizer()
+
+    tasks = [
+        Task(
+            type="explain",
+            target=None,
+            file_path=None,
+            query="of",
+        )
+    ]
+
+    optimized = optimizer.optimize(tasks)
+
+    assert optimized == []
+
+
+def test_all_canonical_short_forms_are_valid():
+    optimizer = make_optimizer()
+
+    tasks = [
+        Task("explain", None, None, "machine learning"),
+        Task("explain", None, None, "deep learning"),
+    ]
+
+    optimized = optimizer.optimize(tasks)
+
+    assert [
+        task.query
+        for task in optimized
+    ] == ["ml", "dl"]
