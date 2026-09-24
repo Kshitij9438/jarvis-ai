@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 
+from planner.canonical_query import CanonicalQuery
 from planner.entity_extractor import EntityExtractor
 from planner.request_understanding import RequestUnderstanding
 
@@ -13,9 +14,10 @@ class RequestUnderstandingAdapter:
     This class introduces an explicit Request Understanding boundary
     without changing the existing planner's behavior.
 
-    It currently owns only orchestration:
+    It currently owns:
     - request segmentation
     - entity extraction
+    - canonical query construction
     - construction of RequestUnderstanding
 
     Tool selection, task construction, optimization, and planning
@@ -55,10 +57,12 @@ class RequestUnderstandingAdapter:
 
         for segment in segments:
             entities = self.entity_extractor.extract(segment)
+            canonical_query = CanonicalQuery.from_text(segment)
 
             results.append(
                 RequestUnderstanding(
                     original_query=segment,
+                    canonical_query=canonical_query.value,
                     entities=entities,
                     decision=decision,
                 )
