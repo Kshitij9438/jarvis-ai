@@ -295,3 +295,12 @@ def test_planner_passes_knowledge_capability():
     assert calls == [
         ("explain graph traversal", Capability.KNOWLEDGE)
     ]
+
+
+def test_planner_uses_plan_validator_owner():
+    planner = Planner(FakeRegistry())
+
+    from planner.plan_validator import PlanValidator
+
+    assert isinstance(planner.validator, PlanValidator)
+    assert planner.validator.__class__.__module__ == "planner.plan_validator"

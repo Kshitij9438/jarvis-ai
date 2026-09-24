@@ -6,7 +6,7 @@ from planner.arg_extractor import ArgExtractor
 
 from brain.llm import LLM
 from planner.plan_optimizer import PlanOptimizer
-from planner.validator import PlanValidator
+from planner.plan_validator import PlanValidator
 from planner.intelligence import PlannerIntelligence
 from planner.scorer import PlanScorer
 
