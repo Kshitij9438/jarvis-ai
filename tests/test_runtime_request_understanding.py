@@ -19,7 +19,7 @@ def test_execute_request_passes_through_request_understanding():
 
     runtime.request_understanding_adapter.understand = wrapped
 
-    runtime.planner.plan = lambda user_input, context: None
+    runtime.planner.plan = lambda user_input, context, request_understanding=None: None
 
     response = runtime.run("calculate 2 + 2")
 
@@ -82,7 +82,7 @@ def test_request_understanding_topics_update_active_topic():
         ]
     )
 
-    runtime.planner.plan = lambda user_input, context: None
+    runtime.planner.plan = lambda user_input, context, request_understanding=None: None
 
     response = runtime.run("explain BFS")
 

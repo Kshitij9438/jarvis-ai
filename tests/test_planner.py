@@ -1,5 +1,7 @@
 from planner.planner import Planner
 from planner.capability_selector import Capability
+from planner.request_understanding import RequestUnderstanding
+from planner.decision import DecisionType, PlannerDecision
 class FakeRegistry:
     def __init__(self):
         from tools.basic_tools import OpenWebsiteTool, EchoTool
@@ -295,6 +297,39 @@ def test_planner_passes_knowledge_capability():
     assert calls == [
         ("explain graph traversal", Capability.KNOWLEDGE)
     ]
+
+
+def test_planner_forwards_request_understanding_to_plan_builder():
+    planner = Planner(FakeRegistry())
+
+    understanding = [
+        RequestUnderstanding(
+            original_query="explain BFS",
+            canonical_query="bfs",
+            decision=PlannerDecision(
+                type=DecisionType.EXECUTE
+            ),
+        )
+    ]
+
+    captured = {}
+
+    def fake_build(
+        user_input,
+        context=None,
+        request_understanding=None,
+    ):
+        captured["request_understanding"] = request_understanding
+        return []
+
+    planner.plan_builder.build = fake_build
+
+    planner.plan(
+        "explain BFS",
+        request_understanding=understanding,
+    )
+
+    assert captured["request_understanding"] is understanding
 
 
 def test_planner_uses_plan_validator_owner():

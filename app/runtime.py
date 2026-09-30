@@ -340,7 +340,11 @@ class JarvisRuntime:
         # =========================
         # PLAN
         # =========================
-        plan = self.planner.plan(user_input, context)
+        plan = self.planner.plan(
+            user_input,
+            context,
+            request_understanding=request_understanding,
+        )
 
         if plan is None or not plan.steps:
             self._record_conversation_entry(

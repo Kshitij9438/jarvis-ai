@@ -109,6 +109,23 @@ def test_explain_uses_arg_extractor_when_no_entity():
     assert tasks[0].query == "attention"
 
 
+def test_canonical_query_transport_does_not_change_task_building():
+    builder = make_builder(
+        extracted={"query": "attention"}
+    )
+
+    tool = ExplainTool()
+
+    tasks = builder.build_tasks(
+        "attention",
+        [tool],
+        {},
+        canonical_query="canonical attention",
+    )
+
+    assert tasks[0].query == "attention"
+
+
 # ==========================================================
 # Web Retriever
 # ==========================================================

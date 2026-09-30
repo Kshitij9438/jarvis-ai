@@ -8,7 +8,13 @@ class TaskBuilder:
         self.arg_extractor = arg_extractor
         self.calculator_parser = CalculatorParser()
 
-    def build_tasks(self, user_input: str, matched_tools: list, entities: dict) -> list[Task]:
+    def build_tasks(
+        self,
+        user_input: str,
+        matched_tools: list,
+        entities: dict,
+        canonical_query: str | None = None,
+    ) -> list[Task]:
         tasks = []
         text = user_input.lower().strip()
 

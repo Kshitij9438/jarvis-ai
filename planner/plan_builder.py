@@ -14,6 +14,7 @@ from planner.retrieval_signals import (
 )
 from planner.task_builder import TaskBuilder
 from planner.tool_selector import ToolSelector
+from planner.request_understanding import RequestUnderstanding
 
 
 class PlanBuilder:
@@ -49,7 +50,12 @@ class PlanBuilder:
         self.task_builder = task_builder
         self.entity_extractor = entity_extractor
 
-    def build(self, user_input: str, context=None) -> list:
+    def build(
+        self,
+        user_input: str,
+        context=None,
+        request_understanding: list[RequestUnderstanding] | None = None,
+    ) -> list:
         """
         Build tasks from the user request.
 
@@ -67,8 +73,18 @@ class PlanBuilder:
 
         all_tasks = []
 
-        for segment in segments:
+        for segment_index, segment in enumerate(segments):
             print(f"\n--- SEGMENT: {segment} ---")
+
+            canonical_query = None
+
+            if (
+                request_understanding is not None
+                and segment_index < len(request_understanding)
+            ):
+                canonical_query = request_understanding[
+                    segment_index
+                ].canonical_query
 
             capability = self.capability_selector.select(segment)
 
@@ -128,11 +144,19 @@ class PlanBuilder:
 
             segment_entities = self.entity_extractor.extract(segment)
 
-            segment_tasks = self.task_builder.build_tasks(
-                segment,
-                segment_tools,
-                segment_entities,
-            )
+            if canonical_query is None:
+                segment_tasks = self.task_builder.build_tasks(
+                    segment,
+                    segment_tools,
+                    segment_entities,
+                )
+            else:
+                segment_tasks = self.task_builder.build_tasks(
+                    segment,
+                    segment_tools,
+                    segment_entities,
+                    canonical_query=canonical_query,
+                )
 
             print(f"DEBUG: Segment Tasks → {segment_tasks}")
 

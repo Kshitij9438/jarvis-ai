@@ -24,6 +24,7 @@ from planner.retrieval_decision import (
 from execution.context_signals import has_retrieved_content
 from planner.capability_selector import CapabilitySelector
 from planner.plan_builder import PlanBuilder
+from planner.request_understanding import RequestUnderstanding
 
 
 
@@ -84,7 +85,12 @@ class Planner:
     # =========================
     # 🚀 MAIN PLANNER
     # =========================
-    def plan(self, user_input: str, context=None):
+    def plan(
+        self,
+        user_input: str,
+        context=None,
+        request_understanding: list[RequestUnderstanding] | None = None,
+    ):
 
         if self._is_trivial_input(user_input):
             return Plan(steps=[
@@ -97,6 +103,7 @@ class Planner:
         all_tasks = self.plan_builder.build(
             user_input,
             context,
+            request_understanding=request_understanding,
         )
         # =========================
         # ❌ NO TASKS

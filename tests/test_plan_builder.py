@@ -2,6 +2,8 @@ from unittest.mock import Mock
 
 from planner.plan_builder import PlanBuilder
 from planner.task import Task
+from planner.request_understanding import RequestUnderstanding
+from planner.decision import DecisionType, PlannerDecision
 
 
 def make_builder():
@@ -89,6 +91,49 @@ def test_build_passes_entities_to_task_builder():
         "explain transformers",
         [tool],
         entities,
+    )
+
+
+def test_build_passes_canonical_query_to_task_builder():
+    (
+        builder,
+        registry,
+        capability_selector,
+        tool_selector,
+        task_builder,
+        entity_extractor,
+    ) = make_builder()
+
+    tool = Mock()
+    tool.name = "explain"
+    tool.requires = []
+
+    tool_selector.select.return_value = [tool]
+    entity_extractor.extract.return_value = {}
+    task_builder.build_tasks.return_value = [
+        Task("explain", query="BFS")
+    ]
+
+    understanding = [
+        RequestUnderstanding(
+            original_query="explain BFS",
+            canonical_query="bfs",
+            decision=PlannerDecision(
+                type=DecisionType.EXECUTE
+            ),
+        )
+    ]
+
+    builder.build(
+        "explain BFS",
+        request_understanding=understanding,
+    )
+
+    task_builder.build_tasks.assert_called_once_with(
+        "explain BFS",
+        [tool],
+        {},
+        canonical_query="bfs",
     )
 
 
