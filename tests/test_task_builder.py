@@ -109,9 +109,9 @@ def test_explain_uses_arg_extractor_when_no_entity():
     assert tasks[0].query == "attention"
 
 
-def test_canonical_query_transport_does_not_change_task_building():
+def test_canonical_query_takes_precedence_over_extracted_query():
     builder = make_builder(
-        extracted={"query": "attention"}
+        extracted={"query": "wrong query"}
     )
 
     tool = ExplainTool()
@@ -123,7 +123,66 @@ def test_canonical_query_transport_does_not_change_task_building():
         canonical_query="canonical attention",
     )
 
-    assert tasks[0].query == "attention"
+    assert tasks[0].query == "canonical attention"
+
+
+def test_explain_uses_canonical_query_when_no_entity():
+    builder = make_builder(
+        extracted={"query": "wrong query"}
+    )
+
+    tool = ExplainTool()
+
+    tasks = builder.build_tasks(
+        "Please explain artificial intelligence",
+        [tool],
+        {},
+        canonical_query="ai",
+    )
+
+    assert tasks[0].query == "ai"
+
+
+def test_web_retriever_uses_canonical_query():
+    builder = make_builder(
+        extracted={"query": "wrong retrieval query"}
+    )
+
+    tool = type(
+        "WebRetrieverTool",
+        (),
+        {"name": "web_retriever"},
+    )()
+
+    tasks = builder.build_tasks(
+        "search something",
+        [tool],
+        {},
+        canonical_query="canonical retrieval query",
+    )
+
+    assert tasks[0].query == "canonical retrieval query"
+
+
+def test_canonical_query_is_used_by_final_fallback():
+    builder = make_builder(
+        extracted={}
+    )
+
+    tool = type(
+        "GenericTool",
+        (),
+        {"name": "echo"},
+    )()
+
+    tasks = builder.build_tasks(
+        "some raw request",
+        [tool],
+        {},
+        canonical_query="canonical semantic query",
+    )
+
+    assert tasks[0].query == "canonical semantic query"
 
 
 # ==========================================================

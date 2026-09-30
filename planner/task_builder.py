@@ -71,7 +71,9 @@ class TaskBuilder:
 
             # 🌐 WEB RETRIEVER
             if tool.name == "web_retriever":
-                if not query or len(query.strip()) < 3:
+                if canonical_query is not None:
+                    query = canonical_query
+                elif not query or len(query.strip()) < 3:
                     query = self._clean_query(user_input)
 
                 if not query:
@@ -81,6 +83,9 @@ class TaskBuilder:
             elif tool.name == "explain":
                 if entities.get("topics"):
                     query = entities["topics"][0]
+
+                elif canonical_query is not None:
+                    query = canonical_query
 
                 elif not query or len(query.strip()) < 3:
                     query = self._clean_query(user_input)
@@ -112,12 +117,13 @@ class TaskBuilder:
             # 🔁 FINAL FALLBACK (SAFE)
             # =========================
             if not query:
-                cleaned = self._clean_query(user_input)
+                if canonical_query is not None:
+                    query = canonical_query
+                else:
+                    query = self._clean_query(user_input)
 
-                if not cleaned:
+                if not query:
                     continue
-
-                query = cleaned
 
             # =========================
             # 🧱 BUILD TASK
