@@ -81,11 +81,11 @@ class TaskBuilder:
 
             # 🧠 EXPLAIN
             elif tool.name == "explain":
-                if entities.get("topics"):
-                    query = entities["topics"][0]
-
-                elif canonical_query is not None:
+                if canonical_query is not None:
                     query = canonical_query
+
+                elif entities.get("topics"):
+                    query = entities["topics"][0]
 
                 elif not query or len(query.strip()) < 3:
                     query = self._clean_query(user_input)

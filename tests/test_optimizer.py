@@ -14,7 +14,7 @@ def test_task_optimizer_remains_a_plan_optimizer():
     assert issubclass(TaskOptimizer, PlanOptimizer)
 
 
-def test_task_optimizer_preserves_legacy_behavior():
+def test_task_optimizer_preserves_canonical_query():
     optimizer = TaskOptimizer()
 
     tasks = [
@@ -22,7 +22,7 @@ def test_task_optimizer_preserves_legacy_behavior():
             type="explain",
             target=None,
             file_path=None,
-            query="artificial intelligence",
+            query="ai",
         )
     ]
 

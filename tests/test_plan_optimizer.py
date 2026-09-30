@@ -13,14 +13,10 @@ def make_optimizer():
 
 
 # ==========================================================
-# Query normalization
+# Canonical query consumption
 # ==========================================================
 
-def test_synonym_normalization_preserves_canonical_short_form():
-    """
-    Synonym normalization must preserve recognized canonical
-    short forms such as 'ai' instead of filtering them out.
-    """
+def test_plan_optimizer_does_not_reinterpret_query():
     optimizer = make_optimizer()
 
     tasks = [
@@ -28,65 +24,32 @@ def test_synonym_normalization_preserves_canonical_short_form():
             type="explain",
             target=None,
             file_path=None,
-            query="artificial intelligence",
+            query="machine learning",
         )
     ]
 
     optimized = optimizer.optimize(tasks)
 
     assert len(optimized) == 1
-    assert optimized[0].query == "ai"
+    assert optimized[0].query == "machine learning"
 
 
-def test_learning_pattern_normalization():
+def test_canonical_short_forms_are_valid():
     optimizer = make_optimizer()
 
     tasks = [
-        Task(
-            type="explain",
-            target=None,
-            file_path=None,
-            query="learn machine learning",
-        )
+        Task("explain", None, None, "ai"),
+        Task("explain", None, None, "ml"),
+        Task("explain", None, None, "dl"),
     ]
 
     optimized = optimizer.optimize(tasks)
 
-    assert optimized[0].query == "ml basics"
-
-
-def test_noise_word_removal():
-    optimizer = make_optimizer()
-
-    tasks = [
-        Task(
-            type="explain",
-            target=None,
-            file_path=None,
-            query="please explain ai again",
-        )
+    assert [task.query for task in optimized] == [
+        "ai",
+        "ml",
+        "dl",
     ]
-
-    optimized = optimizer.optimize(tasks)
-
-    assert optimized[0].query == "explain ai"
-
-
-def test_duplicate_words_removed():
-    optimizer = make_optimizer()
-
-    tasks = [
-        Task(
-            type="explain",
-            target=None,
-            file_path=None,
-            query="git git git tutorial tutorial",
-        )
-    ]
-
-    optimized = optimizer.optimize(tasks)
-
-    assert optimized[0].query == "git tutorial"
 
 
 # ==========================================================
@@ -237,8 +200,9 @@ def test_all_canonical_short_forms_are_valid():
     optimizer = make_optimizer()
 
     tasks = [
-        Task("explain", None, None, "machine learning"),
-        Task("explain", None, None, "deep learning"),
+        Task("explain", None, None, "ai"),
+        Task("explain", None, None, "ml"),
+        Task("explain", None, None, "dl"),
     ]
 
     optimized = optimizer.optimize(tasks)
@@ -246,4 +210,4 @@ def test_all_canonical_short_forms_are_valid():
     assert [
         task.query
         for task in optimized
-    ] == ["ml", "dl"]
+    ] == ["ai", "ml", "dl"]

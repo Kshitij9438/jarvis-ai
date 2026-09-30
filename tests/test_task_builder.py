@@ -126,6 +126,25 @@ def test_canonical_query_takes_precedence_over_extracted_query():
     assert tasks[0].query == "canonical attention"
 
 
+def test_explain_canonical_query_overrides_entity_topic():
+    builder = make_builder(
+        extracted={"query": "wrong query"}
+    )
+
+    tool = ExplainTool()
+
+    tasks = builder.build_tasks(
+        "explain git again",
+        [tool],
+        {
+            "topics": ["git again"]
+        },
+        canonical_query="git",
+    )
+
+    assert tasks[0].query == "git"
+
+
 def test_explain_uses_canonical_query_when_no_entity():
     builder = make_builder(
         extracted={"query": "wrong query"}

@@ -1,7 +1,15 @@
 from planner.planner import Planner
 from planner.capability_selector import Capability
 from planner.request_understanding import RequestUnderstanding
+from planner.request_understanding_adapter import RequestUnderstandingAdapter
+from planner.entity_extractor import EntityExtractor
 from planner.decision import DecisionType, PlannerDecision
+def make_request_understanding(user_input):
+    adapter = RequestUnderstandingAdapter(EntityExtractor())
+    decision = PlannerDecision(type=DecisionType.EXECUTE)
+    return adapter.understand(user_input, decision)
+
+
 class FakeRegistry:
     def __init__(self):
         from tools.basic_tools import OpenWebsiteTool, EchoTool
@@ -30,10 +38,15 @@ class FakeRegistry:
         return list(self.tools.values())
 
 
-def test_dedup_and_normalization():
+def test_dedup_uses_canonical_query():
     planner = Planner(FakeRegistry())
 
-    plan = planner.plan("open github and open github and explain git and explain git again")
+    user_input = "open github and open github and explain git and explain git again"
+
+    plan = planner.plan(
+        user_input,
+        request_understanding=make_request_understanding(user_input),
+    )
 
     assert len(plan.steps) == 2
 
@@ -93,8 +106,14 @@ def test_empty_explain():
 def test_full_pipeline_complex():
     planner = Planner(FakeRegistry())
 
+    user_input = (
+        "open github and github, then explain git and explain git again, "
+        "and also open youtube"
+    )
+
     plan = planner.plan(
-        "open github and github, then explain git and explain git again, and also open youtube"
+        user_input,
+        request_understanding=make_request_understanding(user_input),
     )
 
     actions = [step.action for step in plan.steps]

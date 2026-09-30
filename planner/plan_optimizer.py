@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import re
-
 from planner.task import Task
 
 
@@ -13,50 +11,24 @@ class PlanOptimizer:
     by PlanBuilder.
 
     Responsibilities:
-    - normalize tasks
-    - normalize task queries
+    - normalize structural task fields
+    - preserve the canonical task query
     - deduplicate tasks
     - filter invalid tasks
     - recover required document-loading dependencies
 
-    This implementation intentionally preserves the existing
-    TaskOptimizer behavior. The CanonicalQuery redesign remains
-    a later M7 concern.
+    Semantic query normalization belongs to CanonicalQuery.
+    PlanOptimizer consumes the query representation it receives and
+    does not reinterpret it.
     """
 
     def __init__(self):
-        # Synonym map.
-        self.synonyms = {
-            "artificial intelligence": "ai",
-            "machine learning": "ml",
-            "deep learning": "dl",
-        }
-
-        self.short_form_queries = set(self.synonyms.values())
-
-        # Learning patterns → canonical form.
-        self.learning_patterns = [
-            r"how to (.+)",
-            r"learn (.+)",
-            r"teach me (.+)",
-            r"understand (.+)",
-            r"guide me (.+)",
-        ]
-
-        # Noise words.
-        self.noise_words = {
-            "again",
-            "please",
-            "now",
-            "once",
-            "more",
-            "me",
-            "about",
-            "on",
-            "in",
-            "the",
-            "a",
-            "an",
+        # CanonicalQuery owns semantic normalization. These are the
+        # canonical short forms that remain valid despite their length.
+        self.short_form_queries = {
+            "ai",
+            "ml",
+            "dl",
         }
 
     # =========================
@@ -102,8 +74,6 @@ class PlanOptimizer:
         normalized = []
 
         for task in tasks:
-            query = self._normalize_query(task.query)
-
             normalized_task = Task(
                 type=task.type,
                 target=(
@@ -116,70 +86,12 @@ class PlanOptimizer:
                     if task.file_path
                     else None
                 ),
-                query=query,
+                query=task.query,
             )
 
             normalized.append(normalized_task)
 
         return normalized
-
-    # =========================
-    # QUERY NORMALIZATION
-    # =========================
-
-    def _normalize_query(
-        self,
-        query: str | None,
-    ) -> str | None:
-        if not query:
-            return query
-
-        query = query.lower().strip()
-
-        # Remove noise.
-        words = query.split()
-        words = [
-            word
-            for word in words
-            if word not in self.noise_words
-        ]
-        query = " ".join(words)
-
-        # Synonyms.
-        for phrase, replacement in self.synonyms.items():
-            if phrase in query:
-                query = query.replace(
-                    phrase,
-                    replacement,
-                )
-
-        # Learning normalization.
-        for pattern in self.learning_patterns:
-            match = re.search(pattern, query)
-
-            if match:
-                topic = match.group(1).strip()
-
-                for phrase, replacement in self.synonyms.items():
-                    if phrase in topic:
-                        topic = topic.replace(
-                            phrase,
-                            replacement,
-                        )
-
-                return f"{topic} basics"
-
-        # Remove duplicate words.
-        words = query.split()
-        seen = set()
-        cleaned = []
-
-        for word in words:
-            if word not in seen:
-                seen.add(word)
-                cleaned.append(word)
-
-        return " ".join(cleaned).strip()
 
     # =========================
     # DEDUPLICATION
