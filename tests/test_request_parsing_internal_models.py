@@ -10,6 +10,7 @@ from request_parsing.internal_models import (
     CandidateBoundary,
     BoundaryLabel,
     BoundaryPrediction,
+    StructuralSignal,
 )
 
 
@@ -260,3 +261,66 @@ def test_boundary_probability_can_be_absent(sample_candidate):
     )
 
     assert prediction.boundary_probability is None
+
+def test_structural_signal_is_frozen_dataclass():
+    from dataclasses import is_dataclass
+
+    signal = StructuralSignal(
+        start=13,
+        end=17,
+        signal_type=BoundarySignalType.SEQUENCE_MARKER,
+    )
+
+    assert is_dataclass(StructuralSignal)
+    assert StructuralSignal.__dataclass_params__.frozen
+    assert signal.start == 13
+    assert signal.end == 17
+    assert signal.signal_type is BoundarySignalType.SEQUENCE_MARKER
+
+
+def test_structural_signal_equality_uses_field_values():
+    first = StructuralSignal(
+        start=13,
+        end=17,
+        signal_type=BoundarySignalType.SEQUENCE_MARKER,
+    )
+    second = StructuralSignal(
+        start=13,
+        end=17,
+        signal_type=BoundarySignalType.SEQUENCE_MARKER,
+    )
+
+    assert first == second
+
+
+def test_structural_signal_is_immutable():
+    signal = StructuralSignal(
+        start=13,
+        end=17,
+        signal_type=BoundarySignalType.SEQUENCE_MARKER,
+    )
+
+    with pytest.raises(FrozenInstanceError):
+        signal.start = 12
+
+
+def test_structural_signal_offsets_reference_original_text():
+    text = "Open GitHub, then explain Git."
+
+    signal = StructuralSignal(
+        start=13,
+        end=17,
+        signal_type=BoundarySignalType.SEQUENCE_MARKER,
+    )
+
+    assert text[signal.start:signal.end] == "then"
+
+
+def test_structural_signal_preserves_signal_type():
+    signal = StructuralSignal(
+        start=11,
+        end=12,
+        signal_type=BoundarySignalType.COMMA,
+    )
+
+    assert signal.signal_type is BoundarySignalType.COMMA

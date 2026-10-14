@@ -57,3 +57,11 @@ class BoundaryPrediction:
     label: BoundaryLabel
     boundary_probability: float | None = None
     evidence: Tuple[str, ...] = ()
+
+@dataclass(frozen=True)
+class StructuralSignal:
+    """A structural signal in the input text that may indicate a boundary."""
+
+    start: int
+    end: int
+    signal_type: BoundarySignalType
