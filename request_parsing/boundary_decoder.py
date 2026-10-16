@@ -2,39 +2,85 @@
 from request_parsing.internal_models import (
     BoundaryLabel,
     BoundaryPrediction,
+    BoundarySignalType,
     CandidateBoundary,
 )
 
 
 class BoundaryDecoder:
+    """Accept boundary predictions using priority and overlap rules."""
+
+    _SIGNAL_PRIORITY = {
+        BoundarySignalType.SEQUENCE_MARKER: 5,
+        BoundarySignalType.SEMICOLON: 4,
+        BoundarySignalType.PUNCTUATION: 3,
+        BoundarySignalType.COORDINATOR: 2,
+        BoundarySignalType.COMMA: 1,
+    }
+
     def decode(
         self,
         predictions: tuple[BoundaryPrediction, ...],
     ) -> tuple[BoundaryPrediction, ...]:
+        # Only boundary predictions are eligible for acceptance.
+        boundary_predictions = [
+            prediction
+            for prediction in predictions
+            if prediction.label is BoundaryLabel.BOUNDARY
+        ]
+
+        # Evaluate stronger signals first, independent of input ordering.
         ordered_predictions = sorted(
-            predictions,
+            boundary_predictions,
             key=lambda prediction: (
+                -self._SIGNAL_PRIORITY.get(
+                    prediction.candidate.signal_type, 0
+                ),
                 prediction.candidate.trigger_start,
                 prediction.candidate.trigger_end,
                 prediction.candidate.signal_type.value,
+                prediction.candidate.left_end,
+                prediction.candidate.right_start,
             ),
         )
 
-        final_predictions = []
+        accepted = []
         seen_candidates: set[CandidateBoundary] = set()
 
         for prediction in ordered_predictions:
-            # Accept only predictions classified as boundaries.
-            if prediction.label is not BoundaryLabel.BOUNDARY:
-                continue
-
             candidate = prediction.candidate
 
-            # Skip a candidate that has already been accepted.
+            # Do not accept the same candidate twice.
             if candidate in seen_candidates:
                 continue
 
-            seen_candidates.add(candidate)
-            final_predictions.append(prediction)
+            # Resolve candidates whose split regions overlap.
+            if any(
+                self._overlaps(candidate, existing.candidate)
+                for existing in accepted
+            ):
+                continue
 
-        return tuple(final_predictions)
+            seen_candidates.add(candidate)
+            accepted.append(prediction)
+
+        # Return accepted predictions in their original text order.
+        accepted.sort(
+            key=lambda prediction: (
+                prediction.candidate.trigger_start,
+                prediction.candidate.trigger_end,
+            )
+        )
+
+        return tuple(accepted)
+
+    @staticmethod
+    def _overlaps(
+        first: CandidateBoundary,
+        second: CandidateBoundary,
+    ) -> bool:
+        """Check whether two candidate split regions overlap."""
+        return (
+            first.left_end < second.right_start
+            and second.left_end < first.right_start
+        )

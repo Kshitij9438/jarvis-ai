@@ -233,3 +233,116 @@ def test_acceptance_policy_for_each_label(
     result = decoder.decode((prediction,))
 
     assert len(result) == expected_count
+
+
+def test_sequence_marker_wins_over_overlapping_comma_candidate() -> None:
+    decoder = BoundaryDecoder()
+
+    comma_candidate = CandidateBoundary(
+        left_end=11,
+        right_start=13,
+        trigger_start=11,
+        trigger_end=12,
+        signal_type=BoundarySignalType.COMMA,
+    )
+    sequence_candidate = CandidateBoundary(
+        left_end=12,
+        right_start=18,
+        trigger_start=13,
+        trigger_end=17,
+        signal_type=BoundarySignalType.SEQUENCE_MARKER,
+    )
+
+    comma_prediction = make_prediction(
+        comma_candidate,
+        BoundaryLabel.BOUNDARY,
+        evidence=("comma_separator",),
+    )
+    sequence_prediction = make_prediction(
+        sequence_candidate,
+        BoundaryLabel.BOUNDARY,
+        evidence=("explicit_sequence_marker",),
+    )
+
+    result = decoder.decode((comma_prediction, sequence_prediction))
+
+    assert result == (sequence_prediction,)
+    assert result[0] is sequence_prediction
+
+
+def test_sequence_marker_wins_over_overlapping_coordinator_candidate() -> None:
+    decoder = BoundaryDecoder()
+
+    coordinator_candidate = CandidateBoundary(
+        left_end=11,
+        right_start=16,
+        trigger_start=12,
+        trigger_end=15,
+        signal_type=BoundarySignalType.COORDINATOR,
+    )
+    sequence_candidate = CandidateBoundary(
+        left_end=15,
+        right_start=21,
+        trigger_start=16,
+        trigger_end=20,
+        signal_type=BoundarySignalType.SEQUENCE_MARKER,
+    )
+
+    coordinator_prediction = make_prediction(
+        coordinator_candidate,
+        BoundaryLabel.BOUNDARY,
+        evidence=("two_action_like_phrases",),
+    )
+    sequence_prediction = make_prediction(
+        sequence_candidate,
+        BoundaryLabel.BOUNDARY,
+        evidence=("explicit_sequence_marker",),
+    )
+
+    result = decoder.decode(
+        (coordinator_prediction, sequence_prediction)
+    )
+
+    assert result == (sequence_prediction,)
+    assert result[0] is sequence_prediction
+
+
+def test_overlapping_boundary_resolution_is_deterministic() -> None:
+    decoder = BoundaryDecoder()
+
+    weaker_candidate = CandidateBoundary(
+        left_end=11,
+        right_start=16,
+        trigger_start=12,
+        trigger_end=15,
+        signal_type=BoundarySignalType.COORDINATOR,
+    )
+    stronger_candidate = CandidateBoundary(
+        left_end=15,
+        right_start=21,
+        trigger_start=16,
+        trigger_end=20,
+        signal_type=BoundarySignalType.SEQUENCE_MARKER,
+    )
+
+    weaker_prediction = make_prediction(
+        weaker_candidate,
+        BoundaryLabel.BOUNDARY,
+        evidence=("two_action_like_phrases",),
+    )
+    stronger_prediction = make_prediction(
+        stronger_candidate,
+        BoundaryLabel.BOUNDARY,
+        evidence=("explicit_sequence_marker",),
+    )
+
+    forward_result = decoder.decode(
+        (weaker_prediction, stronger_prediction)
+    )
+    reverse_result = decoder.decode(
+        (stronger_prediction, weaker_prediction)
+    )
+
+    assert forward_result == (stronger_prediction,)
+    assert reverse_result == (stronger_prediction,)
+    assert forward_result == reverse_result
