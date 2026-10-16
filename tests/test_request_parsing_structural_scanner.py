@@ -104,3 +104,15 @@ def test_scanner_detects_signals_without_deciding_boundaries(scanner):
     ]
 
     assert len(coordinators) == 2
+
+def test_and_then_is_one_sequence_marker(scanner):
+    text = "Open GitHub and then explain Git"
+
+    signals = scanner.scan(text)
+
+    assert len(signals) == 1
+    assert (
+        signals[0].signal_type
+        is BoundarySignalType.SEQUENCE_MARKER
+    )
+    assert text[signals[0].start:signals[0].end] == "and then"

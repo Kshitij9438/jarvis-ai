@@ -112,3 +112,28 @@ def test_parser_is_deterministic() -> None:
     text = "Open GitHub and explain Git."
 
     assert parser.parse(text) == parser.parse(text)
+
+def test_and_then_splits_before_and_and_after_then():
+    cases = (
+        (
+            "Open GitHub and then explain Git",
+            ("Open GitHub", "explain Git"),
+        ),
+        (
+            "Explain the code and then run the tests",
+            ("Explain the code", "run the tests"),
+        ),
+        (
+            "Download the dataset and then clean it.",
+            ("Download the dataset", "clean it."),
+        ),
+    )
+
+    parser = RequestParser()
+
+    for text, expected_segments in cases:
+        result = parser.parse(text)
+
+        assert tuple(
+            segment.text for segment in result.segments
+        ) == expected_segments

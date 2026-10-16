@@ -335,3 +335,66 @@ def test_prediction_order_matches_candidate_order(classifier):
     predictions = classifier.classify(text, candidates)
 
     assert tuple(p.candidate for p in predictions) == candidates
+
+@pytest.mark.parametrize(
+    ("text", "phrase", "signal_type", "occurrence"),
+    [
+        (
+            "Download the data and plot the results",
+            "and",
+            BoundarySignalType.COORDINATOR,
+            0,
+        ),
+        (
+            "Build the package next publish it.",
+            "next",
+            BoundarySignalType.SEQUENCE_MARKER,
+            0,
+        ),
+        (
+            'Use the file "report, draft.csv" and summarize it',
+            "and",
+            BoundarySignalType.COORDINATOR,
+            0,
+        ),
+        (
+            "Explain (A or B) and choose the best option",
+            "and",
+            BoundarySignalType.COORDINATOR,
+            0,
+        ),
+        (
+            "Explain {x and y} and simplify the expression",
+            "and",
+            BoundarySignalType.COORDINATOR,
+            1,
+        ),
+        (
+            "Explain the cause and suggest a fix",
+            "and",
+            BoundarySignalType.COORDINATOR,
+            0,
+        ),
+        (
+            "List the issues and prioritize them",
+            "and",
+            BoundarySignalType.COORDINATOR,
+            0,
+        ),
+    ],
+)
+def test_action_verb_vocabulary_covers_evaluation_misses(
+    classifier,
+    text,
+    phrase,
+    signal_type,
+    occurrence,
+):
+    assert_prediction(
+        classifier,
+        text,
+        phrase,
+        signal_type,
+        BoundaryLabel.BOUNDARY,
+        occurrence=occurrence,
+    )

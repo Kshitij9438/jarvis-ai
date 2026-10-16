@@ -87,6 +87,14 @@ class BoundaryClassifier:
             "validate",
             "visit",
             "write",
+            "choose",
+            "download",
+            "prioritize",
+            "prioritise",
+            "publish",
+            "simplify",
+            "suggest",
+            "use",
         }
     )
 
@@ -183,7 +191,7 @@ class BoundaryClassifier:
         trigger: str,
     ) -> tuple[BoundaryLabel, str]:
         # Rule 1: Explicit sequence markers are strong boundary signals.
-        if trigger in {"then", "after that"}:
+        if trigger in {"then", "after that", "and then"}:
             return BoundaryLabel.BOUNDARY, "explicit_sequence_marker"
 
         # "Next" can be a sequence marker, but can also appear in a noun

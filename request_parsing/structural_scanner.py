@@ -1,3 +1,4 @@
+
 from request_parsing.internal_models import (
     BoundarySignalType,
     StructuralSignal,
@@ -21,6 +22,24 @@ class StructuralScanner:
         while i < len(tokens):
             token = tokens[i]
             normalized = token.text.casefold()
+
+            # Detect the multiword sequence marker "and then".
+            # Treat it as one signal so the eventual split excludes
+            # both words from the resulting request segments.
+            if (
+                normalized == "and"
+                and i + 1 < len(tokens)
+                and tokens[i + 1].text.casefold() == "then"
+            ):
+                signals.append(
+                    StructuralSignal(
+                        start=token.start,
+                        end=tokens[i + 1].end,
+                        signal_type=BoundarySignalType.SEQUENCE_MARKER,
+                    )
+                )
+                i += 2
+                continue
 
             # Detect the multiword sequence marker "after that".
             if (
