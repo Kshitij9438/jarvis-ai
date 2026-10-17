@@ -129,6 +129,7 @@ def test_pending_request_persists_and_updates():
     assert conversation.pending_request is None
 
     conversation.pending_request = PendingRequest(
+        original_query = "explain something",
         intent=IntentModel(
             name="explain",
             description="Explain a concept",
@@ -152,6 +153,7 @@ def test_pending_request_persists_and_updates():
     assert retrieved is conversation
     assert retrieved.pending_request is not None
     assert retrieved.pending_request == PendingRequest(
+        original_query="explain something",
         intent=IntentModel(
             name="explain",
             description="Explain a concept",
@@ -167,6 +169,7 @@ def test_pending_request_persists_across_conversation_lookup():
     conversation_id = context.conversation_id
 
     pending_request = PendingRequest(
+        original_query="explain something",
         intent=IntentModel(
             name="explain",
             description="Explain a concept",
@@ -191,6 +194,7 @@ def test_pending_request_is_isolated_between_conversations():
     conversation_b = manager.create_conversation()
 
     conversation_a.pending_request = PendingRequest(
+        original_query="explain something",
         intent=IntentModel(
             name="explain",
             description="Explain a concept",
@@ -208,3 +212,15 @@ def test_pending_request_is_isolated_between_conversations():
         == "Transformers"
     )
     assert conversation_b.pending_request is None
+
+def test_pending_request_retains_original_query():
+    pending_request = PendingRequest(
+        original_query="explain something",
+        intent=IntentModel(
+            name="explain",
+            description="Explain a concept",
+        ),
+        missing_information=["topic"],
+    )
+
+    assert pending_request.original_query == "explain something"

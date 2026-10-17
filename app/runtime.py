@@ -150,6 +150,54 @@ class JarvisRuntime:
         conversation_id = conversation.conversation_id
 
         # =========================
+        # M2: RESUME PENDING TOPIC CLARIFICATION
+        # =========================
+        resumed_pending_request = None
+        pending_request = conversation.pending_request
+
+        if (
+            pending_request is not None
+            and conversation.pending_clarification is not None
+            and pending_request.intent is not None
+            and pending_request.intent.name.strip().casefold()
+            in {"explain", "explanation"}
+            and "topic"
+            in {
+                item.strip().casefold()
+                for item in pending_request.missing_information
+            }
+        ):
+            # The current user message answers the pending clarification.
+            pending_request.clarification_answer = original_user_input
+            resumed_pending_request = pending_request
+
+            # Complete the original request using the clarification answer.
+            original_query = pending_request.original_query.strip()
+            placeholder = "something"
+
+            placeholder_start = original_query.casefold().find(placeholder)
+
+            if placeholder_start >= 0:
+                user_input = (
+                    original_query[:placeholder_start]
+                    + original_user_input
+                    + original_query[placeholder_start + len(placeholder):]
+                ).strip()
+            else:
+            # Fallback for an incomplete explanation request without
+            # the literal "something" placeholder.
+                user_input = f"explain {original_user_input}".strip()
+
+        def clear_consumed_pending_state():
+            """Clear only the pending request consumed by this turn."""
+            if (
+                resumed_pending_request is not None
+                and conversation.pending_request is resumed_pending_request
+            ):
+                conversation.pending_request = None
+                conversation.pending_clarification = None
+
+        # =========================
         # REQUEST-SCOPED EXECUTION
         # =========================
         context = ExecutionContext(user_input)
@@ -183,6 +231,7 @@ class JarvisRuntime:
                 )
 
                 conversation.pending_request = PendingRequest(
+                    original_query=original_user_input,
                     intent=self.planner.llm.generate_structured(
                         prompt=user_input,
                         schema=IntentModel,
@@ -251,6 +300,7 @@ class JarvisRuntime:
             )
 
             conversation.pending_request = PendingRequest(
+                original_query=original_user_input,
                 intent=self.planner.llm.generate_structured(
                     prompt=user_input,
                     schema=IntentModel,
@@ -280,6 +330,7 @@ class JarvisRuntime:
             }
 
         if decision.type == "reject":
+            clear_consumed_pending_state()
             self._record_conversation_entry(
                 conversation_id=conversation_id,
                 user_input=original_user_input,
@@ -295,6 +346,7 @@ class JarvisRuntime:
             }
 
         if decision.type == "respond":
+            clear_consumed_pending_state()
             self._record_conversation_entry(
                 conversation_id=conversation_id,
                 user_input=original_user_input,
@@ -347,6 +399,7 @@ class JarvisRuntime:
         )
 
         if plan is None or not plan.steps:
+            clear_consumed_pending_state()
             self._record_conversation_entry(
                 conversation_id=conversation_id,
                 user_input=original_user_input,
@@ -374,6 +427,7 @@ class JarvisRuntime:
         ]
 
         if not plan.steps:
+            clear_consumed_pending_state()
             self._record_conversation_entry(
                 conversation_id=conversation_id,
                 user_input=original_user_input,
@@ -396,6 +450,8 @@ class JarvisRuntime:
             context,
             event_callback=event_callback,
         )
+
+        clear_consumed_pending_state()
 
         # =========================
         # UPDATE CONVERSATION STATE

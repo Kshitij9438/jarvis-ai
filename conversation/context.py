@@ -93,6 +93,11 @@ class PendingRequest(BaseModel):
     This allows a later user answer to be combined with the original
     request instead of being interpreted as a completely new request.
     """
+    original_query: str = Field(
+        ...,
+        description="The original user request that required clarification.",
+    )
+
 
     intent: IntentModel | None = Field(
         None,
