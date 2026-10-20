@@ -41,6 +41,22 @@ class StructuralScanner:
                 i += 2
                 continue
 
+            # Detect the multiword sequence marker "and also".
+            if (
+                normalized == "and"
+                and i + 1 < len(tokens)
+                and tokens[i + 1].text.casefold() == "also"
+            ):
+                signals.append(
+                    StructuralSignal(
+                        start=token.start,
+                        end=tokens[i + 1].end,
+                        signal_type=BoundarySignalType.SEQUENCE_MARKER,
+                    )
+                )
+                i += 2
+                continue
+
             # Detect the multiword sequence marker "after that".
             if (
                 normalized == "after"

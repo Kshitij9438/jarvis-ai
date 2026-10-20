@@ -203,3 +203,19 @@ def test_every_segment_offset_reconstructs_its_text() -> None:
 
     for segment in result.segments:
         assert text[segment.start:segment.end] == segment.text
+
+
+def test_and_also_separates_following_action():
+    text = (
+        "open github and github, then explain git and explain git again, "
+        "and also open youtube"
+    )
+
+    result = RequestParser().parse(text)
+
+    assert tuple(segment.text for segment in result.segments) == (
+        "open github and github,",
+        "explain git",
+        "explain git again,",
+        "open youtube",
+    )

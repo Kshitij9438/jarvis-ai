@@ -90,12 +90,11 @@ def test_adapter_returns_request_understanding_models():
     }
 
 
-def test_adapter_ignores_empty_segments():
+def test_adapter_preserves_trailing_sequence_marker():
     entity_extractor = Mock()
     entity_extractor.extract.return_value = {}
 
     adapter = RequestUnderstandingAdapter(entity_extractor)
-
     decision = PlannerDecision(type=DecisionType.EXECUTE)
 
     result = adapter.understand(
@@ -104,5 +103,46 @@ def test_adapter_ignores_empty_segments():
     )
 
     assert [item.original_query for item in result] == [
-        "Explain BFS",
+        "Explain BFS and then",
     ]
+    assert entity_extractor.extract.call_count == 1
+
+
+def test_adapter_keeps_coordinated_objects_in_one_segment():
+    entity_extractor = Mock()
+    entity_extractor.extract.return_value = {
+        "topics": ["Python and C++"],
+    }
+
+    adapter = RequestUnderstandingAdapter(entity_extractor)
+    decision = PlannerDecision(type=DecisionType.EXECUTE)
+
+    result = adapter.understand(
+        "Explain Python and C++",
+        decision,
+    )
+
+    assert [item.original_query for item in result] == [
+        "Explain Python and C++",
+    ]
+
+    assert entity_extractor.extract.call_count == 1
+
+
+def test_adapter_preserves_coordinators_inside_quoted_text():
+    entity_extractor = Mock()
+    entity_extractor.extract.return_value = {}
+
+    adapter = RequestUnderstandingAdapter(entity_extractor)
+    decision = PlannerDecision(type=DecisionType.EXECUTE)
+
+    result = adapter.understand(
+        'Search for "rock and roll"',
+        decision,
+    )
+
+    assert [item.original_query for item in result] == [
+        'Search for "rock and roll"',
+    ]
+
+    assert entity_extractor.extract.call_count == 1

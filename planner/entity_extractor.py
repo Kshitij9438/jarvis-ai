@@ -50,13 +50,11 @@ class EntityExtractor:
             entities["file_path"] = path
 
         # =========================
-        # 🧠 SEGMENTATION (ALIGNED WITH PLANNER)
+        # 🧠 PROCESS THE SUPPLIED SEGMENT
         # =========================
-
-        if text.startswith("compare "):
-            segments = [text]
-        else:
-            segments = re.split(r"\band\b|\bthen\b|,", text)
+        # RequestParser owns request segmentation upstream.
+        # EntityExtractor must not split the supplied segment again.
+        segments = [text]
 
         for segment in segments:
             segment = segment.strip()

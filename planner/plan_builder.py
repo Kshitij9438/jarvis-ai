@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 
+
 from execution.context_signals import has_retrieved_content
 from planner.entity_extractor import EntityExtractor
 from planner.retrieval_decision import (
@@ -63,13 +64,19 @@ class PlanBuilder:
         per-segment construction logic from Planner.
         """
 
-        segments = [
-            segment.strip()
-            for segment in re.split(r"\band\b|\bthen\b|,", user_input)
-            if segment.strip()
+        if request_understanding is not None:
+            # Use the segments established by Request Understanding.
+            segments = [
+                item.original_query
+                for item in request_understanding
+            ]
+        else:
+            # Preserve compatibility for direct callers.
+            segments = [
+                segment.strip()
+                for segment in re.split(r"\band\b|\bthen\b|,", user_input)
+                if segment.strip()
         ]
-
-        print(f"DEBUG: Segments → {segments}")
 
         all_tasks = []
 
@@ -142,7 +149,15 @@ class PlanBuilder:
             if not segment_tools:
                 continue
 
-            segment_entities = self.entity_extractor.extract(segment)
+            if (
+                request_understanding is not None
+                and segment_index < len(request_understanding)
+            ):
+                # Reuse entities produced by Request Understanding.
+                segment_entities = request_understanding[segment_index].entities
+            else:
+                # Preserve compatibility for legacy direct callers.
+                segment_entities = self.entity_extractor.extract(segment)
 
             if canonical_query is None:
                 segment_tasks = self.task_builder.build_tasks(

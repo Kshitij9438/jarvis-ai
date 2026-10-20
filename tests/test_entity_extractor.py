@@ -206,3 +206,11 @@ def test_extracts_multiple_multiword_comparison_topics():
         "artificial intelligence",
         "machine learning",
     ]
+
+
+def test_explain_coordinated_objects_remain_one_topic():
+    extractor = make_extractor()
+
+    entities = extractor.extract("Explain Python and C++")
+
+    assert entities["topics"] == ["python and c++"]

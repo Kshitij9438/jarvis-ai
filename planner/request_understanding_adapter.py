@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import re
+from request_parsing.parser import RequestParser
 
 from planner.canonical_query import CanonicalQuery
 from planner.entity_extractor import EntityExtractor
@@ -28,8 +28,15 @@ class RequestUnderstandingAdapter:
     request-understanding boundary is established.
     """
 
-    def __init__(self, entity_extractor: EntityExtractor):
+    def __init__(
+        self,
+        entity_extractor: EntityExtractor,
+        request_parser: RequestParser | None = None,
+    ):
         self.entity_extractor = entity_extractor
+        self.request_parser = (
+            request_parser if request_parser is not None else RequestParser()
+        )
 
     def understand(
         self,
@@ -44,15 +51,11 @@ class RequestUnderstandingAdapter:
         One RequestUnderstanding object is produced per existing
         planner segment.
         """
+        parse_result = self.request_parser.parse(user_input)
         segments = [
-            segment.strip()
-            for segment in re.split(
-                r"\band\b|\bthen\b|,",
-                user_input,
-            )
-            if segment.strip()
+            segment.text
+            for segment in parse_result.segments
         ]
-
         results = []
 
         for segment in segments:

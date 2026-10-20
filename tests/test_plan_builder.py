@@ -252,3 +252,52 @@ def test_build_ignores_empty_segments():
     tasks = builder.build("explain BFS, ,")
 
     assert tasks == [Task("explain", query="BFS")]
+
+
+def test_build_uses_request_understanding_segments_without_resplitting():
+    (
+        builder,
+        registry,
+        capability_selector,
+        tool_selector,
+        task_builder,
+        entity_extractor,
+    ) = make_builder()
+
+    tool = Mock()
+    tool.name = "explain"
+    tool.requires = []
+
+    entities = {"topics": ["Python and C++"]}
+    tool_selector.select.return_value = [tool]
+
+    expected_task = Task("explain", query="Python and C++")
+    task_builder.build_tasks.return_value = [expected_task]
+
+    decision = PlannerDecision(type=DecisionType.EXECUTE)
+
+    understanding = RequestUnderstanding(
+        original_query="Explain Python and C++",
+        canonical_query="explain python and c++",
+        entities=entities,
+        decision=decision,
+    )
+
+    tasks = builder.build(
+        "Explain Python and C++",
+        request_understanding=[understanding],
+    )
+
+    assert tasks == [expected_task]
+
+    capability_selector.select.assert_called_once_with(
+        "Explain Python and C++"
+    )
+    tool_selector.select.assert_called_once()
+    entity_extractor.extract.assert_not_called()
+    task_builder.build_tasks.assert_called_once_with(
+        "Explain Python and C++",
+        [tool],
+        entities,
+        canonical_query="explain python and c++",
+    )
