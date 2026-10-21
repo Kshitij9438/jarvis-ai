@@ -125,3 +125,5 @@ greeting: `2+3`, `AI` and `git` all return "Hey! How can I help you?".
 3. Add `IntentResolver` and `CompletenessChecker` so understanding produces the decision (completes M7).
 4. Fill the empty M7 test files, and test the live `PlanBuilder` retrieval path instead of the `Planner` copy.
 5. M8 onward as written. F2 is resolved by M10.
+
+M2 wired
