@@ -110,12 +110,17 @@ class Executor:
             return None
 
         required = getattr(tool, "requires_context", [])
-        if not required:
+        optional = getattr(tool, "optional_context", [])
+
+        # Preserve declaration order and avoid duplicate context types.
+        context_types = list(dict.fromkeys([*required, *optional]))
+
+        if not context_types:
             return None
 
         collected = []
 
-        for ctx_type in required:
+        for ctx_type in context_types:
             if not context.has(ctx_type):
                 continue
 
@@ -132,7 +137,10 @@ class Executor:
 
         final_context = "\n\n".join(collected)
 
-        print(f"[Executor] Injecting context → {tool.name} | types={required}")
+        print(
+            f"[Executor] Injecting context → {tool.name} "
+            f"| types={context_types}"
+        )
 
         return final_context
 

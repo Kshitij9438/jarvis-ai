@@ -14,6 +14,7 @@ class BaseTool:
 
     NEW ARCHITECTURE:
     - requires_context → what data this tool NEEDS
+    - optional_context → what data this tool can use when available
     - produces_context → what data this tool GENERATES
     """
 
@@ -47,6 +48,10 @@ class BaseTool:
     # What context this tool NEEDS
     # Example: ["web"], ["document"]
     requires_context: List[str] = []
+
+    # Context this tool can use when available but does not require.
+    # Example: ["web"], ["document"]
+    optional_context: List[str] = []
 
     # What context this tool PRODUCES
     # Example: ["web"], ["document"]

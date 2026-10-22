@@ -14,10 +14,15 @@ bare strings; asserting against that shape was testing code that no
 longer exists.
 """
 
+from types import SimpleNamespace
+
+from pydantic import BaseModel
+
+from execution.context import ExecutionContext
 from executor.executor import Executor
-from tools.registry import ToolRegistry
-from tools.basic_tools import EchoTool
 from planner.schema import Action, Plan
+from tools.basic_tools import EchoTool
+from tools.registry import ToolRegistry
 
 
 def _make_registry_with_echo():
@@ -176,3 +181,62 @@ def test_executor_step_limit_guard():
     results = executor.execute(plan, context=FakeContext())
 
     assert results == []
+
+
+def test_executor_supplies_optional_context_when_available():
+    executor = Executor(None)
+
+    explain_tool = SimpleNamespace(
+        name="explain",
+        requires_context=[],
+        optional_context=["web"],
+    )
+
+    context = ExecutionContext("explain transformers")
+    context.store("web", "Transformers are neural network architectures.")
+
+    result = executor.get_context_for_tool(explain_tool, context)
+
+    assert result == "Transformers are neural network architectures."
+
+
+def test_executor_passes_optional_context_to_tool():
+    class ExplainArgs(BaseModel):
+        query: str
+        context: str | None = None
+
+    class FakeExplainTool:
+        name = "explain"
+        args_schema = ExplainArgs
+        requires_context = []
+        optional_context = ["web"]
+        produces_context = []
+
+        def __init__(self):
+            self.received_context = None
+
+        def run(self, query, context=None):
+            self.received_context = context
+            return f"Explanation of {query} using available context."
+
+    tool = FakeExplainTool()
+    registry = SimpleNamespace(
+        get=lambda name: tool if name == "explain" else None
+    )
+    executor = Executor(registry)
+
+    context = ExecutionContext("explain transformers")
+    web_content = "Transformers are neural network architectures."
+    context.store("web", web_content)
+
+    plan = Plan(
+        steps=[
+            Action(action="explain", args={"query": "transformers"})
+        ]
+    )
+
+    results = executor.execute(plan, context=context)
+
+    assert len(results) == 1
+    assert results[0]["success"] is True
+    assert tool.received_context == web_content

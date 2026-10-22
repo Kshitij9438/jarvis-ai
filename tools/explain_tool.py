@@ -44,11 +44,12 @@ class ExplainTool(BaseTool):
     args_schema = ExplainArgs
 
     # =========================
-    # 🧠 CONTEXT CONTRACT (FIXED)
+    # 🧠 CONTEXT CONTRACT
     # =========================
 
-    # 🔥 Explain BENEFITS from web context
-    requires_context = ["web"]   # ← KEY CHANGE
+    # Web context improves grounding but is not required.
+    requires_context = []
+    optional_context = ["web"]
 
     # Explain does not produce context
     produces_context = []
