@@ -1,4 +1,5 @@
 from app.runtime import JarvisRuntime
+from control.clarification import ClarificationRequest, clarify_question
 from planner.decision import DecisionType
 
 
@@ -49,3 +50,39 @@ def test_clarification_does_not_execute_tools():
 
     # A clarification must terminate the current execution attempt.
     # Therefore no execution plan should have been produced.
+
+
+def test_clarification_returns_fallback_when_structured_generation_fails():
+    class FailingLLM:
+        def generate_structured(self, **kwargs):
+            return None
+
+    llm = FailingLLM()
+
+    clarification = clarify_question(
+        llm,
+        "explain something",
+    )
+
+    assert isinstance(clarification, ClarificationRequest)
+    assert clarification.question.strip()
+
+
+def test_clarification_preserves_successful_generated_question():
+    expected = ClarificationRequest(
+        question="Which topic would you like me to explain?"
+    )
+
+    class SuccessfulLLM:
+        def generate_structured(self, **kwargs):
+            return expected
+
+    clarification = clarify_question(
+        SuccessfulLLM(),
+        "explain something",
+    )
+
+    assert clarification is expected
+    assert clarification.question == (
+        "Which topic would you like me to explain?"
+    )

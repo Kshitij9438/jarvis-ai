@@ -25,7 +25,7 @@ def clarify_question(
     It does not modify conversation state or decide whether clarification
     is required.
     """
-    return llm.generate_structured(
+    clarification = llm.generate_structured(
         prompt=user_query,
         schema=ClarificationRequest,
         system_prompt=(
@@ -35,4 +35,14 @@ def clarify_question(
             "Do not provide an answer or additional context. "
             "Return only a relevant clarification question in English."
         ),
+    )
+
+    if (
+        isinstance(clarification, ClarificationRequest)
+        and clarification.question.strip()
+    ):
+        return clarification
+
+    return ClarificationRequest(
+        question="Could you clarify what you'd like me to help with?"
     )
