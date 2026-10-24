@@ -19,4 +19,4 @@ def test_request_understanding_populates_canonical_query():
 
     assert len(results) == 1
     assert results[0].original_query == "Please explain artificial intelligence"
-    assert results[0].canonical_query == "ai"
+    assert results[0].canonical_query == "artificial intelligence"

@@ -70,16 +70,6 @@ class CanonicalQuery:
         ]
         query = " ".join(words)
 
-        # Preserve existing synonym normalization.
-        synonyms = {
-            "artificial intelligence": "ai",
-            "machine learning": "ml",
-            "deep learning": "dl",
-        }
-
-        for phrase, replacement in synonyms.items():
-            query = query.replace(phrase, replacement)
-
         # Preserve existing learning-pattern normalization.
         learning_patterns = [
             r"how to (.+)",
@@ -94,12 +84,6 @@ class CanonicalQuery:
 
             if match:
                 topic = match.group(1).strip()
-
-                for phrase, replacement in synonyms.items():
-                    topic = topic.replace(
-                        phrase,
-                        replacement,
-                    )
 
                 return f"{topic} basics"
 

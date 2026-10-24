@@ -17,29 +17,21 @@ def test_filler_words_are_removed():
         "Please explain what is artificial intelligence"
     )
 
-    assert result.value == "ai"
+    assert result.value == "artificial intelligence"
 
 
-def test_synonym_normalization():
+def test_expanded_topic_phrases_are_preserved():
     assert (
-        CanonicalQuery.from_text(
-            "artificial intelligence"
-        ).value
-        == "ai"
+        CanonicalQuery.from_text("artificial intelligence").value
+        == "artificial intelligence"
     )
-
     assert (
-        CanonicalQuery.from_text(
-            "machine learning"
-        ).value
-        == "ml"
+        CanonicalQuery.from_text("machine learning").value
+        == "machine learning"
     )
-
     assert (
-        CanonicalQuery.from_text(
-            "deep learning"
-        ).value
-        == "dl"
+        CanonicalQuery.from_text("deep learning").value
+        == "deep learning"
     )
 
 
@@ -48,7 +40,7 @@ def test_learning_pattern_normalization():
         CanonicalQuery.from_text(
             "learn machine learning"
         ).value
-        == "ml basics"
+        == "machine learning basics"
     )
 
 

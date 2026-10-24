@@ -156,10 +156,10 @@ def test_explain_uses_canonical_query_when_no_entity():
         "Please explain artificial intelligence",
         [tool],
         {},
-        canonical_query="ai",
+        canonical_query="artificial intelligence",
     )
 
-    assert tasks[0].query == "ai"
+    assert tasks[0].query == "artificial intelligence"
 
 
 def test_web_retriever_uses_canonical_query():
